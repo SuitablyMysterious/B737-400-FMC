@@ -331,6 +331,86 @@ local function parseLine(line)
         end
 end
 
+-- Cache helpers: write NDB cache to aircraft_dir/EEPROM/earth_nav.ndb
+local function getNDBCacheFile()
+    return aircraft_path .. "EEPROM/earth_nav.ndb"
+end
+
+local function ensureEEPROMDir()
+    local dir = aircraft_path .. "EEPROM"
+    os.execute('mkdir -p "' .. dir .. '"')
+end
+
+local function readTwoHeaderLines(path)
+    local f = io.open(path, "r")
+    if not f then return nil, nil end
+    local l1 = f:read("*l") or ""
+    local l2 = f:read("*l") or ""
+    f:close()
+    return l1, l2
+end
+
+-- saveNDBCache(navdataPath): writes the current mainTable.ndb to cache
+-- and prefixes the cache with the two header lines from navdataPath
+local function saveNDBCache(navdataPath)
+    ensureEEPROMDir()
+    local meta1, meta2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+    local f = io.open(getNDBCacheFile(), "w")
+    if not f then
+        logMsg("NAVDATA PARSER: Cannot open NDB cache for writing: " .. tostring(getNDBCacheFile()))
+        return
+    end
+    f:write((meta1 or "") .. "\n")
+    f:write((meta2 or "") .. "\n")
+    for ident, list in pairs(mainTable.ndb) do
+        for _, e in ipairs(list) do
+            local name = (e.name or ""):gsub("\t", " "):gsub("\n", " ")
+            f:write(string.format("%s\t%f\t%f\t%f\t%d\t%d\t%d\t%s\t%s\t%s\n",
+                e.ident or "", e.lat or 0, e.lon or 0, e.elev or 0,
+                e.freq or 0, e.class or 0, e.bfo and 1 or 0,
+                e.region or "", e.icao or "", name))
+        end
+    end
+    f:close()
+    logMsg("NAVDATA PARSER: Saved NDB cache to " .. getNDBCacheFile())
+end
+
+-- loadNDBCache(navdataPath): loads cache only if its first two header
+-- lines match the current navdata file at navdataPath. Returns true on success.
+local function loadNDBCache(navdataPath)
+    local cache = io.open(getNDBCacheFile(), "r")
+    if not cache then return false end
+    local cache_h1 = cache:read("*l") or ""
+    local cache_h2 = cache:read("*l") or ""
+    local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+    if not nav_h1 or cache_h1 ~= (nav_h1 or "") or cache_h2 ~= (nav_h2 or "") then
+        f:close()
+        linkGlideslopes()
+        -- save NDB cache (best-effort) with reference to navdata path
+        pcall(saveNDBCache, path)
+        mainTable.ready = true
+        if ident and ident ~= "" then
+            local entry = {
+                type = ROW_NDB,
+                lat = tonumber(lat),
+                lon = tonumber(lon),
+                elev = tonumber(elev),
+                freq = tonumber(freq),
+                class = tonumber(class),
+                bfo = tonumber(bfo) == 1,
+                ident = ident,
+                region = region,
+                icao = icao,
+                name = name,
+            }
+            insertNavaid(mainTable.ndb, entry.ident, entry)
+        end
+    end
+    cache:close()
+    logMsg("NAVDATA PARSER: Loaded NDB cache from " .. getNDBCacheFile())
+    return true
+end
+
 local BATCH_SIZE = 500
 
 local function loaderCoroutine(path)
@@ -371,8 +451,10 @@ local function loaderCoroutine(path)
     linkGlideslopes()
     mainTable.ready = true
     mainTable.loading = false
-    logMsg(string.format(
-        "NAV PARSER: Done. %d lines, %d navaids. VOR=%d NDB=%d LOC=%d",
+        -- save NDB cache (best-effort)
+        pcall(saveNDBCache)
+        mainTable.ready = true
+        "NAVDATA PARSER: Done. %d lines, %d navaids. VOR=%d NDB=%d LOC=%d",
         lineNum,
         mainTable.totalNavaids,
         mainTable.countTable(mainTable.vor),
@@ -395,14 +477,23 @@ function mainTable.load()
     if mainTable.loading or mainTable.ready then return end
     local path = findNavdataPath()
     if not path then
-        logMsg("NAV PARSER: No earth_nav.dat found")
+        logMsg("NAVDATA PARSER: No earth_nav.dat found")
         return
     end
     mainTable.loading = true
     mainTable.ready = false
     mainTable.linesRead = 0
     mainTable.totalNavaids = 0
-    logMsg("NAV PARSER: Loading " .. tostring(path))
+    logMsg("NAVDATA PARSER: Loading " .. tostring(path))
+    -- attempt to load cached NDB if metadata matches current navdata
+    local ok = pcall(loadNDBCache, path)
+    if ok and mainTable.countTable(mainTable.ndb) > 0 then
+        mainTable.ready = true
+        mainTable.loading = false
+        logMsg("NAVDATA PARSER: Using cached NDB data from " .. getNDBCacheFile())
+        return
+    end
+    -- fallback: parse the navdata file
     _coro = coroutine.create(function() loaderCoroutine(path) end)
 end
 
@@ -411,7 +502,7 @@ function mainTable.update()
     if _coro and not mainTable.ready then
         local ok, err = coroutine.resume(_coro)
         if not ok then
-            logMsg("NAV PARSER ERROR: " .. tostring(err))
+            logMsg("NAVDATA PARSER ERROR: " .. tostring(err))
             mainTable.loading = false
             _coro = nil
         end
