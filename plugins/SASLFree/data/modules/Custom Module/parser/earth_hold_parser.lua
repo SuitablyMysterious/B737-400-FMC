@@ -89,6 +89,10 @@ local function parseLine(line)
 end
 
 -- Cache helpers: write HOLD cache to aircraft_dir/EEPROM/earth_hold.ndb
+local RAW_MAGIC = "RAW1"
+local FIELD_SEP = string.char(31)
+local RECORD_SEP = string.char(30)
+
 local function getCacheFile()
     return aircraft_path .. "EEPROM/earth_hold.ndb"
 end
@@ -116,6 +120,7 @@ local function saveCache(navdataPath)
         return
     end
 
+    f:write(RAW_MAGIC .. "\n")
     f:write((meta1 or "") .. "\n")
     f:write((meta2 or "") .. "\n")
 
@@ -134,19 +139,20 @@ local function saveCache(navdataPath)
     end
 
     for _, e in ipairs(mainTable.rows) do
-        push(string.format("%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s\t%d\t%d\t%d\n",
+        local parts = {
             e.ident or "",
             e.region or "",
             e.airport or "",
-            e.fix_type or 0,
-            e.inbound_course or 0,
-            e.leg_time_min or 0,
-            e.leg_dist_nm or 0,
+            tostring(e.fix_type or 0),
+            tostring(e.inbound_course or 0),
+            tostring(e.leg_time_min or 0),
+            tostring(e.leg_dist_nm or 0),
             e.turn_dir or "R",
-            e.min_alt or 0,
-            e.max_alt or 0,
-            e.max_ias or 0
-        ))
+            tostring(e.min_alt or 0),
+            tostring(e.max_alt or 0),
+            tostring(e.max_ias or 0),
+        }
+        push(table.concat(parts, FIELD_SEP) .. RECORD_SEP)
     end
 
     if #writeBuffer > 0 then
@@ -161,7 +167,9 @@ local function loadCache(navdataPath)
     local cache = io.open(getCacheFile(), "r")
     if not cache then return false end
 
-    local cache_h1 = cache:read("*l") or ""
+    local first = cache:read("*l") or ""
+    local raw = (first == RAW_MAGIC)
+    local cache_h1 = raw and (cache:read("*l") or "") or first
     local cache_h2 = cache:read("*l") or ""
     local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
 
@@ -170,9 +178,19 @@ local function loadCache(navdataPath)
         return false
     end
 
-    for line in cache:lines() do
-        if not line:match("^%s*$") then
-            parseLine(line)
+    if raw then
+        local body = cache:read("*a") or ""
+        for rec in body:gmatch("([^" .. RECORD_SEP .. "]+)") do
+            local line = rec:gsub(FIELD_SEP, " ")
+            if not line:match("^%s*$") then
+                parseLine(line)
+            end
+        end
+    else
+        for line in cache:lines() do
+            if not line:match("^%s*$") then
+                parseLine(line)
+            end
         end
     end
 

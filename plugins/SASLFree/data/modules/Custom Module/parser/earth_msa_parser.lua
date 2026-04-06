@@ -116,6 +116,10 @@ local function parseLine(line)
 end
 
 -- Cache helpers: write MSA cache to aircraft_dir/EEPROM/earth_msa.ndb
+local RAW_MAGIC = "RAW1"
+local FIELD_SEP = string.char(31)
+local RECORD_SEP = string.char(30)
+
 local function getCacheFile()
     return aircraft_path .. "EEPROM/earth_msa.ndb"
 end
@@ -143,6 +147,7 @@ local function saveCache(navdataPath)
         return
     end
 
+    f:write(RAW_MAGIC .. "\n")
     f:write((meta1 or "") .. "\n")
     f:write((meta2 or "") .. "\n")
 
@@ -181,7 +186,7 @@ local function saveCache(navdataPath)
         parts[#parts + 1] = "0"
         parts[#parts + 1] = tostring(e.status or 0)
 
-        push(table.concat(parts, "\t") .. "\n")
+        push(table.concat(parts, FIELD_SEP) .. RECORD_SEP)
     end
 
     if #writeBuffer > 0 then
@@ -196,7 +201,9 @@ local function loadCache(navdataPath)
     local cache = io.open(getCacheFile(), "r")
     if not cache then return false end
 
-    local cache_h1 = cache:read("*l") or ""
+    local first = cache:read("*l") or ""
+    local raw = (first == RAW_MAGIC)
+    local cache_h1 = raw and (cache:read("*l") or "") or first
     local cache_h2 = cache:read("*l") or ""
     local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
 
@@ -205,9 +212,19 @@ local function loadCache(navdataPath)
         return false
     end
 
-    for line in cache:lines() do
-        if not line:match("^%s*$") then
-            parseLine(line)
+    if raw then
+        local body = cache:read("*a") or ""
+        for rec in body:gmatch("([^" .. RECORD_SEP .. "]+)") do
+            local line = rec:gsub(FIELD_SEP, " ")
+            if not line:match("^%s*$") then
+                parseLine(line)
+            end
+        end
+    else
+        for line in cache:lines() do
+            if not line:match("^%s*$") then
+                parseLine(line)
+            end
         end
     end
 

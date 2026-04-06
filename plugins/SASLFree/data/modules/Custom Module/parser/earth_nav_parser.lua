@@ -344,6 +344,10 @@ local function resetStorageTables()
 end
 
 -- Cache helpers: write NDB cache to aircraft_dir/EEPROM/earth_nav.ndb
+local RAW_MAGIC = "RAW1"
+local FIELD_SEP = string.char(31)
+local RECORD_SEP = string.char(30)
+
 local function getNDBCacheFile()
     return aircraft_path .. "EEPROM/earth_nav.ndb"
 end
@@ -372,6 +376,7 @@ local function saveNDBCache(navdataPath)
         logMsg("NAVDATA PARSER: Cannot open NDB cache for writing: " .. tostring(getNDBCacheFile()))
         return
     end
+    f:write(RAW_MAGIC .. "\n")
     f:write((meta1 or "") .. "\n")
     f:write((meta2 or "") .. "\n")
 
@@ -391,11 +396,20 @@ local function saveNDBCache(navdataPath)
 
     for ident, list in pairs(mainTable.ndb) do
         for _, e in ipairs(list) do
-            local name = (e.name or ""):gsub("\t", " "):gsub("\n", " ")
-            push(string.format("%s\t%f\t%f\t%f\t%d\t%d\t%d\t%s\t%s\t%s\n",
-                e.ident or "", e.lat or 0, e.lon or 0, e.elev or 0,
-                e.freq or 0, e.class or 0, e.bfo and 1 or 0,
-                e.region or "", e.icao or "", name))
+            local name = (e.name or ""):gsub(FIELD_SEP, " "):gsub(RECORD_SEP, " "):gsub("\n", " ")
+            local parts = {
+                e.ident or "",
+                tostring(e.lat or 0),
+                tostring(e.lon or 0),
+                tostring(e.elev or 0),
+                tostring(e.freq or 0),
+                tostring(e.class or 0),
+                tostring(e.bfo and 1 or 0),
+                e.region or "",
+                e.icao or "",
+                name,
+            }
+            push(table.concat(parts, FIELD_SEP) .. RECORD_SEP)
         end
     end
 
@@ -412,7 +426,9 @@ end
 local function loadNDBCache(navdataPath)
     local cache = io.open(getNDBCacheFile(), "r")
     if not cache then return false end
-    local cache_h1 = cache:read("*l") or ""
+    local first = cache:read("*l") or ""
+    local raw = (first == RAW_MAGIC)
+    local cache_h1 = raw and (cache:read("*l") or "") or first
     local cache_h2 = cache:read("*l") or ""
     local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
     if not nav_h1 or cache_h1 ~= (nav_h1 or "") or cache_h2 ~= (nav_h2 or "") then
@@ -420,26 +436,52 @@ local function loadNDBCache(navdataPath)
         return false
     end
 
-    -- Parse cached rows: ident lat lon elev freq class bfo region icao name
-    for line in cache:lines() do
-        local ident, lat, lon, elev, freq, class, bfo, region, icao, name =
-            line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t(.*)$")
+    if raw then
+        local body = cache:read("*a") or ""
+        for rec in body:gmatch("([^" .. RECORD_SEP .. "]+)") do
+            local line = rec:gsub(FIELD_SEP, "\t")
+            local ident, lat, lon, elev, freq, class, bfo, region, icao, name =
+                line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t(.*)$")
 
-        if ident and ident ~= "" then
-            local entry = {
-                type = ROW_NDB,
-                lat = tonumber(lat),
-                lon = tonumber(lon),
-                elev = tonumber(elev),
-                freq = tonumber(freq),
-                class = tonumber(class),
-                bfo = tonumber(bfo) == 1,
-                ident = ident,
-                region = region,
-                icao = icao,
-                name = name,
-            }
-            insertNavaid(mainTable.ndb, entry.ident, entry)
+            if ident and ident ~= "" then
+                local entry = {
+                    type = ROW_NDB,
+                    lat = tonumber(lat),
+                    lon = tonumber(lon),
+                    elev = tonumber(elev),
+                    freq = tonumber(freq),
+                    class = tonumber(class),
+                    bfo = tonumber(bfo) == 1,
+                    ident = ident,
+                    region = region,
+                    icao = icao,
+                    name = name,
+                }
+                insertNavaid(mainTable.ndb, entry.ident, entry)
+            end
+        end
+    else
+        -- Parse legacy text cached rows: ident lat lon elev freq class bfo region icao name
+        for line in cache:lines() do
+            local ident, lat, lon, elev, freq, class, bfo, region, icao, name =
+                line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t(.*)$")
+
+            if ident and ident ~= "" then
+                local entry = {
+                    type = ROW_NDB,
+                    lat = tonumber(lat),
+                    lon = tonumber(lon),
+                    elev = tonumber(elev),
+                    freq = tonumber(freq),
+                    class = tonumber(class),
+                    bfo = tonumber(bfo) == 1,
+                    ident = ident,
+                    region = region,
+                    icao = icao,
+                    name = name,
+                }
+                insertNavaid(mainTable.ndb, entry.ident, entry)
+            end
         end
     end
 
