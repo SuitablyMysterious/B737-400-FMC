@@ -6,6 +6,7 @@
 -- General variables
 
 local xp_path = sasl.getXPlanePath()
+local aircraft_path = sasl.getAircraftPath()
 local xp_version = sasl.getXPVersion()
 
 local xp11_navdata_paths = {
@@ -87,6 +88,82 @@ local function parseLine(line)
     insertRow(mainTable.byAirport, entry.airport, entry)
 end
 
+-- Cache helpers: write HOLD cache to aircraft_dir/EEPROM/earth_hold.ndb
+local function getCacheFile()
+    return aircraft_path .. "EEPROM/earth_hold.ndb"
+end
+
+local function ensureEEPROMDir()
+    local dir = aircraft_path .. "EEPROM"
+    os.execute('mkdir -p "' .. dir .. '"')
+end
+
+local function readTwoHeaderLines(path)
+    local f = io.open(path, "r")
+    if not f then return nil, nil end
+    local l1 = f:read("*l") or ""
+    local l2 = f:read("*l") or ""
+    f:close()
+    return l1, l2
+end
+
+local function saveCache(navdataPath)
+    ensureEEPROMDir()
+    local meta1, meta2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+    local f = io.open(getCacheFile(), "w")
+    if not f then
+        logMsg("HOLD PARSER: Cannot open cache for writing: " .. tostring(getCacheFile()))
+        return
+    end
+
+    f:write((meta1 or "") .. "\n")
+    f:write((meta2 or "") .. "\n")
+
+    for _, e in ipairs(mainTable.rows) do
+        f:write(string.format("%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s\t%d\t%d\t%d\n",
+            e.ident or "",
+            e.region or "",
+            e.airport or "",
+            e.fix_type or 0,
+            e.inbound_course or 0,
+            e.leg_time_min or 0,
+            e.leg_dist_nm or 0,
+            e.turn_dir or "R",
+            e.min_alt or 0,
+            e.max_alt or 0,
+            e.max_ias or 0
+        ))
+    end
+
+    f:close()
+    logMsg("HOLD PARSER: Saved cache to " .. getCacheFile())
+end
+
+local function loadCache(navdataPath)
+    local cache = io.open(getCacheFile(), "r")
+    if not cache then return false end
+
+    local cache_h1 = cache:read("*l") or ""
+    local cache_h2 = cache:read("*l") or ""
+    local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+
+    if not nav_h1 or cache_h1 ~= (nav_h1 or "") or cache_h2 ~= (nav_h2 or "") then
+        cache:close()
+        return false
+    end
+
+    for line in cache:lines() do
+        if not line:match("^%s*$") then
+            parseLine(line)
+        end
+    end
+
+    cache:close()
+    mainTable.totalRows = #mainTable.rows
+    logMsg("HOLD PARSER: Loaded cache from " .. getCacheFile())
+    return true
+end
+
 local BATCH_SIZE = 1500
 
 local function loaderCoroutine(path)
@@ -125,6 +202,9 @@ local function loaderCoroutine(path)
     mainTable.ready = true
     mainTable.loading = false
 
+    -- save cache (best-effort)
+    pcall(saveCache, path)
+
     logMsg(string.format(
         "HOLD PARSER: Done. %d lines, %d hold entries, %d idents",
         lineNum,
@@ -160,6 +240,16 @@ function mainTable.load()
     mainTable.totalRows = 0
 
     logMsg("HOLD PARSER: Loading " .. tostring(path))
+
+    -- attempt to load cache if metadata matches current navdata
+    local ok, loaded = pcall(loadCache, path)
+    if ok and loaded and #mainTable.rows > 0 then
+        mainTable.ready = true
+        mainTable.loading = false
+        logMsg("HOLD PARSER: Using cached data from " .. getCacheFile())
+        return
+    end
+
     _coro = coroutine.create(function() loaderCoroutine(path) end)
 end
 

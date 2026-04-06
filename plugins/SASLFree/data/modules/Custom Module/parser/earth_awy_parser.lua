@@ -6,6 +6,7 @@
 -- General variables
 
 local xp_path = sasl.getXPlanePath()
+local aircraft_path = sasl.getAircraftPath()
 local xp_version = sasl.getXPVersion()
 
 local xp11_navdata_paths = {
@@ -89,6 +90,82 @@ local function parseLine(line)
     insertRow(mainTable.byTo, entry.to_ident, entry)
 end
 
+-- Cache helpers: write AWY cache to aircraft_dir/EEPROM/earth_awy.ndb
+local function getCacheFile()
+    return aircraft_path .. "EEPROM/earth_awy.ndb"
+end
+
+local function ensureEEPROMDir()
+    local dir = aircraft_path .. "EEPROM"
+    os.execute('mkdir -p "' .. dir .. '"')
+end
+
+local function readTwoHeaderLines(path)
+    local f = io.open(path, "r")
+    if not f then return nil, nil end
+    local l1 = f:read("*l") or ""
+    local l2 = f:read("*l") or ""
+    f:close()
+    return l1, l2
+end
+
+local function saveCache(navdataPath)
+    ensureEEPROMDir()
+    local meta1, meta2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+    local f = io.open(getCacheFile(), "w")
+    if not f then
+        logMsg("AWY PARSER: Cannot open cache for writing: " .. tostring(getCacheFile()))
+        return
+    end
+
+    f:write((meta1 or "") .. "\n")
+    f:write((meta2 or "") .. "\n")
+
+    for _, e in ipairs(mainTable.rows) do
+        f:write(string.format("%s\t%s\t%d\t%s\t%s\t%d\t%s\t%d\t%d\t%d\t%s\n",
+            e.from_ident or "",
+            e.from_icao or "",
+            e.from_type or 0,
+            e.to_ident or "",
+            e.to_icao or "",
+            e.to_type or 0,
+            e.direction or "N",
+            e.level or 0,
+            e.floor_fl or 0,
+            e.ceiling_fl or 0,
+            e.airway or ""
+        ))
+    end
+
+    f:close()
+    logMsg("AWY PARSER: Saved cache to " .. getCacheFile())
+end
+
+local function loadCache(navdataPath)
+    local cache = io.open(getCacheFile(), "r")
+    if not cache then return false end
+
+    local cache_h1 = cache:read("*l") or ""
+    local cache_h2 = cache:read("*l") or ""
+    local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+
+    if not nav_h1 or cache_h1 ~= (nav_h1 or "") or cache_h2 ~= (nav_h2 or "") then
+        cache:close()
+        return false
+    end
+
+    for line in cache:lines() do
+        if not line:match("^%s*$") then
+            parseLine(line)
+        end
+    end
+
+    cache:close()
+    mainTable.totalRows = #mainTable.rows
+    logMsg("AWY PARSER: Loaded cache from " .. getCacheFile())
+    return true
+end
+
 local BATCH_SIZE = 1500
 
 local function loaderCoroutine(path)
@@ -127,6 +204,9 @@ local function loaderCoroutine(path)
     mainTable.ready = true
     mainTable.loading = false
 
+    -- save cache (best-effort)
+    pcall(saveCache, path)
+
     logMsg(string.format(
         "AWY PARSER: Done. %d lines, %d segments, %d airways",
         lineNum,
@@ -163,6 +243,16 @@ function mainTable.load()
     mainTable.totalRows = 0
 
     logMsg("AWY PARSER: Loading " .. tostring(path))
+
+    -- attempt to load cache if metadata matches current navdata
+    local ok, loaded = pcall(loadCache, path)
+    if ok and loaded and #mainTable.rows > 0 then
+        mainTable.ready = true
+        mainTable.loading = false
+        logMsg("AWY PARSER: Using cached data from " .. getCacheFile())
+        return
+    end
+
     _coro = coroutine.create(function() loaderCoroutine(path) end)
 end
 

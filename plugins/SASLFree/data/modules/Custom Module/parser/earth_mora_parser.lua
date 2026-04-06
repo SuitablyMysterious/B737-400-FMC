@@ -6,6 +6,7 @@
 -- General variables
 
 local xp_path = sasl.getXPlanePath()
+local aircraft_path = sasl.getAircraftPath()
 local xp_version = sasl.getXPVersion()
 
 local xp11_navdata_paths = {
@@ -84,6 +85,74 @@ local function parseLine(line)
     mainTable.grid[entry.lat_band][entry.lon_band] = entry.cells
 end
 
+-- Cache helpers: write MORA cache to aircraft_dir/EEPROM/earth_mora.ndb
+local function getCacheFile()
+    return aircraft_path .. "EEPROM/earth_mora.ndb"
+end
+
+local function ensureEEPROMDir()
+    local dir = aircraft_path .. "EEPROM"
+    os.execute('mkdir -p "' .. dir .. '"')
+end
+
+local function readTwoHeaderLines(path)
+    local f = io.open(path, "r")
+    if not f then return nil, nil end
+    local l1 = f:read("*l") or ""
+    local l2 = f:read("*l") or ""
+    f:close()
+    return l1, l2
+end
+
+local function saveCache(navdataPath)
+    ensureEEPROMDir()
+    local meta1, meta2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+    local f = io.open(getCacheFile(), "w")
+    if not f then
+        logMsg("MORA PARSER: Cannot open cache for writing: " .. tostring(getCacheFile()))
+        return
+    end
+
+    f:write((meta1 or "") .. "\n")
+    f:write((meta2 or "") .. "\n")
+
+    for _, e in ipairs(mainTable.rows) do
+        local parts = { e.lat_band or "+00", e.lon_band or "+000" }
+        for i = 1, #e.cells do
+            parts[#parts + 1] = tostring(e.cells[i] or 0)
+        end
+        f:write(table.concat(parts, "\t") .. "\n")
+    end
+
+    f:close()
+    logMsg("MORA PARSER: Saved cache to " .. getCacheFile())
+end
+
+local function loadCache(navdataPath)
+    local cache = io.open(getCacheFile(), "r")
+    if not cache then return false end
+
+    local cache_h1 = cache:read("*l") or ""
+    local cache_h2 = cache:read("*l") or ""
+    local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+
+    if not nav_h1 or cache_h1 ~= (nav_h1 or "") or cache_h2 ~= (nav_h2 or "") then
+        cache:close()
+        return false
+    end
+
+    for line in cache:lines() do
+        if not line:match("^%s*$") then
+            parseLine(line)
+        end
+    end
+
+    cache:close()
+    mainTable.totalRows = #mainTable.rows
+    logMsg("MORA PARSER: Loaded cache from " .. getCacheFile())
+    return true
+end
+
 local BATCH_SIZE = 1500
 
 local function loaderCoroutine(path)
@@ -122,6 +191,9 @@ local function loaderCoroutine(path)
     mainTable.ready = true
     mainTable.loading = false
 
+    -- save cache (best-effort)
+    pcall(saveCache, path)
+
     logMsg(string.format(
         "MORA PARSER: Done. %d lines, %d grid rows",
         lineNum,
@@ -147,6 +219,16 @@ function mainTable.load()
     mainTable.totalRows = 0
 
     logMsg("MORA PARSER: Loading " .. tostring(path))
+
+    -- attempt to load cache if metadata matches current navdata
+    local ok, loaded = pcall(loadCache, path)
+    if ok and loaded and #mainTable.rows > 0 then
+        mainTable.ready = true
+        mainTable.loading = false
+        logMsg("MORA PARSER: Using cached data from " .. getCacheFile())
+        return
+    end
+
     _coro = coroutine.create(function() loaderCoroutine(path) end)
 end
 

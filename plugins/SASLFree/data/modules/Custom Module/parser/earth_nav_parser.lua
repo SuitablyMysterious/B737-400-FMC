@@ -384,11 +384,15 @@ local function loadNDBCache(navdataPath)
     local cache_h2 = cache:read("*l") or ""
     local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
     if not nav_h1 or cache_h1 ~= (nav_h1 or "") or cache_h2 ~= (nav_h2 or "") then
-        f:close()
-        linkGlideslopes()
-        -- save NDB cache (best-effort) with reference to navdata path
-        pcall(saveNDBCache, path)
-        mainTable.ready = true
+        cache:close()
+        return false
+    end
+
+    -- Parse cached rows: ident lat lon elev freq class bfo region icao name
+    for line in cache:lines() do
+        local ident, lat, lon, elev, freq, class, bfo, region, icao, name =
+            line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t(.*)$")
+
         if ident and ident ~= "" then
             local entry = {
                 type = ROW_NDB,
@@ -406,6 +410,7 @@ local function loadNDBCache(navdataPath)
             insertNavaid(mainTable.ndb, entry.ident, entry)
         end
     end
+
     cache:close()
     logMsg("NAVDATA PARSER: Loaded NDB cache from " .. getNDBCacheFile())
     return true
@@ -451,9 +456,10 @@ local function loaderCoroutine(path)
     linkGlideslopes()
     mainTable.ready = true
     mainTable.loading = false
-        -- save NDB cache (best-effort)
-        pcall(saveNDBCache)
-        mainTable.ready = true
+    -- save NDB cache (best-effort)
+    pcall(saveNDBCache, path)
+
+    logMsg(string.format(
         "NAVDATA PARSER: Done. %d lines, %d navaids. VOR=%d NDB=%d LOC=%d",
         lineNum,
         mainTable.totalNavaids,

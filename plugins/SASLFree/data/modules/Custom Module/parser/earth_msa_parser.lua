@@ -6,6 +6,7 @@
 -- General variables
 
 local xp_path = sasl.getXPlanePath()
+local aircraft_path = sasl.getAircraftPath()
 local xp_version = sasl.getXPVersion()
 
 local xp11_navdata_paths = {
@@ -114,6 +115,90 @@ local function parseLine(line)
     insertRow(mainTable.byIdent, entry.ident, entry)
 end
 
+-- Cache helpers: write MSA cache to aircraft_dir/EEPROM/earth_msa.ndb
+local function getCacheFile()
+    return aircraft_path .. "EEPROM/earth_msa.ndb"
+end
+
+local function ensureEEPROMDir()
+    local dir = aircraft_path .. "EEPROM"
+    os.execute('mkdir -p "' .. dir .. '"')
+end
+
+local function readTwoHeaderLines(path)
+    local f = io.open(path, "r")
+    if not f then return nil, nil end
+    local l1 = f:read("*l") or ""
+    local l2 = f:read("*l") or ""
+    f:close()
+    return l1, l2
+end
+
+local function saveCache(navdataPath)
+    ensureEEPROMDir()
+    local meta1, meta2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+    local f = io.open(getCacheFile(), "w")
+    if not f then
+        logMsg("MSA PARSER: Cannot open cache for writing: " .. tostring(getCacheFile()))
+        return
+    end
+
+    f:write((meta1 or "") .. "\n")
+    f:write((meta2 or "") .. "\n")
+
+    for _, e in ipairs(mainTable.rows) do
+        local parts = {
+            tostring(e.row_type or 0),
+            e.ident or "",
+            e.region or "",
+            e.airport or "",
+            e.reference or "M",
+        }
+
+        for _, s in ipairs(e.sectors or {}) do
+            parts[#parts + 1] = tostring(s.bearing or 0)
+            parts[#parts + 1] = tostring(s.altitude or 0)
+            parts[#parts + 1] = tostring(s.radius or 0)
+        end
+
+        -- terminator triplet + trailing status token
+        parts[#parts + 1] = "000"
+        parts[#parts + 1] = "000"
+        parts[#parts + 1] = "0"
+        parts[#parts + 1] = tostring(e.status or 0)
+
+        f:write(table.concat(parts, "\t") .. "\n")
+    end
+
+    f:close()
+    logMsg("MSA PARSER: Saved cache to " .. getCacheFile())
+end
+
+local function loadCache(navdataPath)
+    local cache = io.open(getCacheFile(), "r")
+    if not cache then return false end
+
+    local cache_h1 = cache:read("*l") or ""
+    local cache_h2 = cache:read("*l") or ""
+    local nav_h1, nav_h2 = readTwoHeaderLines(navdataPath or findNavdataPath())
+
+    if not nav_h1 or cache_h1 ~= (nav_h1 or "") or cache_h2 ~= (nav_h2 or "") then
+        cache:close()
+        return false
+    end
+
+    for line in cache:lines() do
+        if not line:match("^%s*$") then
+            parseLine(line)
+        end
+    end
+
+    cache:close()
+    mainTable.totalRows = #mainTable.rows
+    logMsg("MSA PARSER: Loaded cache from " .. getCacheFile())
+    return true
+end
+
 local BATCH_SIZE = 1500
 
 local function loaderCoroutine(path)
@@ -152,6 +237,9 @@ local function loaderCoroutine(path)
     mainTable.ready = true
     mainTable.loading = false
 
+    -- save cache (best-effort)
+    pcall(saveCache, path)
+
     logMsg(string.format(
         "MSA PARSER: Done. %d lines, %d records, %d airports",
         lineNum,
@@ -187,6 +275,16 @@ function mainTable.load()
     mainTable.totalRows = 0
 
     logMsg("MSA PARSER: Loading " .. tostring(path))
+
+    -- attempt to load cache if metadata matches current navdata
+    local ok, loaded = pcall(loadCache, path)
+    if ok and loaded and #mainTable.rows > 0 then
+        mainTable.ready = true
+        mainTable.loading = false
+        logMsg("MSA PARSER: Using cached data from " .. getCacheFile())
+        return
+    end
+
     _coro = coroutine.create(function() loaderCoroutine(path) end)
 end
 
