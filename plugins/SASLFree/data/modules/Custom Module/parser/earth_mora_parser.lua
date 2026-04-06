@@ -10,13 +10,13 @@ local aircraft_path = sasl.getAircraftPath()
 local xp_version = sasl.getXPVersion()
 
 local xp11_navdata_paths = {
-    { "Custom Data/earth_mora.dat",                                         "mora - Navigraph/Aerosoft override" },
-    { "Resources/default data/earth_mora.dat",                              "mora - Laminar fallback" },
+    {"Custom Data/earth_mora.dat"},
+    {"Resources/default data/earth_mora.dat"},
 }
 
 local xp12_navdata_paths = {
-    { "Custom Data/earth_mora.dat",                                         "mora - Navigraph/Aerosoft override" },
-    { "Resources/default data/earth_mora.dat",                              "mora - Laminar fallback" },
+    {"Custom Data/earth_mora.dat"},
+    {"Resources/default data/earth_mora.dat"},
 }
 
 -- main table

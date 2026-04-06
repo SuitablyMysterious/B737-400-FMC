@@ -10,13 +10,13 @@ local aircraft_path = sasl.getAircraftPath()
 local xp_version = sasl.getXPVersion()
 
 local xp11_navdata_paths = {
-    { "Custom Data/earth_hold.dat",                                         "hold - Navigraph/Aerosoft override" },
-    { "Resources/default data/earth_hold.dat",                              "hold - Laminar fallback" },
+    {"Custom Data/earth_hold.dat"},
+    {"Resources/default data/earth_hold.dat"},
 }
 
 local xp12_navdata_paths = {
-    { "Custom Data/earth_hold.dat",                                         "hold - Navigraph/Aerosoft override" },
-    { "Resources/default data/earth_hold.dat",                              "hold - Laminar fallback" },
+    {"Custom Data/earth_hold.dat"},
+    {"Resources/default data/earth_hold.dat"},
 }
 
 -- main table
