@@ -146,6 +146,20 @@ local function saveCache(navdataPath)
     f:write((meta1 or "") .. "\n")
     f:write((meta2 or "") .. "\n")
 
+    local writeBuffer = {}
+    local bufferedLines = 0
+    local FLUSH_EVERY = 512
+
+    local function push(line)
+        writeBuffer[#writeBuffer + 1] = line
+        bufferedLines = bufferedLines + 1
+        if bufferedLines >= FLUSH_EVERY then
+            f:write(table.concat(writeBuffer))
+            writeBuffer = {}
+            bufferedLines = 0
+        end
+    end
+
     for _, e in ipairs(mainTable.rows) do
         local parts = {
             tostring(e.row_type or 0),
@@ -167,7 +181,11 @@ local function saveCache(navdataPath)
         parts[#parts + 1] = "0"
         parts[#parts + 1] = tostring(e.status or 0)
 
-        f:write(table.concat(parts, "\t") .. "\n")
+        push(table.concat(parts, "\t") .. "\n")
+    end
+
+    if #writeBuffer > 0 then
+        f:write(table.concat(writeBuffer))
     end
 
     f:close()

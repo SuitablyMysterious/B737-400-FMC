@@ -121,8 +121,22 @@ local function saveCache(navdataPath)
     f:write((meta1 or "") .. "\n")
     f:write((meta2 or "") .. "\n")
 
+    local writeBuffer = {}
+    local bufferedLines = 0
+    local FLUSH_EVERY = 512
+
+    local function push(line)
+        writeBuffer[#writeBuffer + 1] = line
+        bufferedLines = bufferedLines + 1
+        if bufferedLines >= FLUSH_EVERY then
+            f:write(table.concat(writeBuffer))
+            writeBuffer = {}
+            bufferedLines = 0
+        end
+    end
+
     for _, e in ipairs(mainTable.rows) do
-        f:write(string.format("%s\t%s\t%d\t%s\t%s\t%d\t%s\t%d\t%d\t%d\t%s\n",
+        push(string.format("%s\t%s\t%d\t%s\t%s\t%d\t%s\t%d\t%d\t%d\t%s\n",
             e.from_ident or "",
             e.from_icao or "",
             e.from_type or 0,
@@ -135,6 +149,10 @@ local function saveCache(navdataPath)
             e.ceiling_fl or 0,
             e.airway or ""
         ))
+    end
+
+    if #writeBuffer > 0 then
+        f:write(table.concat(writeBuffer))
     end
 
     f:close()

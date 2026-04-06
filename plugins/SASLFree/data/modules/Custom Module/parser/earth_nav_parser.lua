@@ -331,6 +331,18 @@ local function parseLine(line)
         end
 end
 
+local function resetStorageTables()
+    mainTable.ndb = {}
+    mainTable.vor = {}
+    mainTable.loc = {}
+    mainTable.gs = {}
+    mainTable.markers = {}
+    mainTable.dme = {}
+    mainTable.fpap = {}
+    mainTable.ltp = {}
+    mainTable.gls = {}
+end
+
 -- Cache helpers: write NDB cache to aircraft_dir/EEPROM/earth_nav.ndb
 local function getNDBCacheFile()
     return aircraft_path .. "EEPROM/earth_nav.ndb"
@@ -362,15 +374,35 @@ local function saveNDBCache(navdataPath)
     end
     f:write((meta1 or "") .. "\n")
     f:write((meta2 or "") .. "\n")
+
+    local writeBuffer = {}
+    local bufferedLines = 0
+    local FLUSH_EVERY = 512
+
+    local function push(line)
+        writeBuffer[#writeBuffer + 1] = line
+        bufferedLines = bufferedLines + 1
+        if bufferedLines >= FLUSH_EVERY then
+            f:write(table.concat(writeBuffer))
+            writeBuffer = {}
+            bufferedLines = 0
+        end
+    end
+
     for ident, list in pairs(mainTable.ndb) do
         for _, e in ipairs(list) do
             local name = (e.name or ""):gsub("\t", " "):gsub("\n", " ")
-            f:write(string.format("%s\t%f\t%f\t%f\t%d\t%d\t%d\t%s\t%s\t%s\n",
+            push(string.format("%s\t%f\t%f\t%f\t%d\t%d\t%d\t%s\t%s\t%s\n",
                 e.ident or "", e.lat or 0, e.lon or 0, e.elev or 0,
                 e.freq or 0, e.class or 0, e.bfo and 1 or 0,
                 e.region or "", e.icao or "", name))
         end
     end
+
+    if #writeBuffer > 0 then
+        f:write(table.concat(writeBuffer))
+    end
+
     f:close()
     logMsg("NAVDATA PARSER: Saved NDB cache to " .. getNDBCacheFile())
 end
@@ -486,14 +518,17 @@ function mainTable.load()
         logMsg("NAVDATA PARSER: No earth_nav.dat found")
         return
     end
+
+    resetStorageTables()
+
     mainTable.loading = true
     mainTable.ready = false
     mainTable.linesRead = 0
     mainTable.totalNavaids = 0
     logMsg("NAVDATA PARSER: Loading " .. tostring(path))
     -- attempt to load cached NDB if metadata matches current navdata
-    local ok = pcall(loadNDBCache, path)
-    if ok and mainTable.countTable(mainTable.ndb) > 0 then
+    local ok, loaded = pcall(loadNDBCache, path)
+    if ok and loaded and mainTable.countTable(mainTable.ndb) > 0 then
         mainTable.ready = true
         mainTable.loading = false
         logMsg("NAVDATA PARSER: Using cached NDB data from " .. getNDBCacheFile())
