@@ -18,6 +18,17 @@ Parses `earth_mora.dat` grid rows into both sequential rows and lat/lon-band ind
 
 Parses `earth_msa.dat` MSA records and sector triplets into indexed lookup tables (`rows`, `byAirport`, `byIdent`).
 
+## `medb_parser.lua`:
+
+Loads takeoff/landing speed table data from `aircraft_dir/EEPROM/<profile>.medb`, where `<profile>` is selected from livery `eng_type` in `livery.fcconfig` read via `sim/aircraft/view/acf_livery_path`.
+
+Supported MEDB profiles:
+
+- `2B2.medb`
+- `3C1.medb`
+
+If no livery config value can be resolved, parser falls back to `3C1.medb`.
+
 ## integration:
 
 All parser modules above are loaded/updated via `Custom Module/main.lua` using `require("parser.<module>")`, `loadAll()`, and `updateAll()`.

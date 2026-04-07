@@ -9,21 +9,32 @@ local mainTable = {}
 
 -- parser modules
 
-local function safeRequire(moduleName)
+local function safeRequire(moduleName, fallbackName)
 	local ok, mod = pcall(require, moduleName)
-	if not ok then
-		logMsg("CUSTOM MODULE: Failed to require " .. tostring(moduleName) .. ": " .. tostring(mod))
+	if ok then
+		return mod
+	end
+
+	if fallbackName then
+		local ok2, mod2 = pcall(require, fallbackName)
+		if ok2 then
+			return mod2
+		end
+		logMsg("CUSTOM MODULE: Failed to require " .. tostring(moduleName) .. " and " .. tostring(fallbackName) .. ": " .. tostring(mod2))
 		return nil
 	end
-	return mod
+
+	logMsg("CUSTOM MODULE: Failed to require " .. tostring(moduleName) .. ": " .. tostring(mod))
+	return nil
 end
 
 mainTable.parsers = {
-	earth_nav = safeRequire("parser.earth_nav_parser"),
-	earth_awy = safeRequire("parser.earth_awy_parser"),
-	earth_hold = safeRequire("parser.earth_hold_parser"),
-	earth_mora = safeRequire("parser.earth_mora_parser"),
-	earth_msa = safeRequire("parser.earth_msa_parser"),
+	earth_nav = safeRequire("parser.earth_nav_parser", "earth_nav_parser"),
+	earth_awy = safeRequire("parser.earth_awy_parser", "earth_awy_parser"),
+	earth_hold = safeRequire("parser.earth_hold_parser", "earth_hold_parser"),
+	earth_mora = safeRequire("parser.earth_mora_parser", "earth_mora_parser"),
+	earth_msa = safeRequire("parser.earth_msa_parser", "earth_msa_parser"),
+	medb = safeRequire("parser.medb_parser", "medb_parser"),
 }
 
 -- lifecycle state
