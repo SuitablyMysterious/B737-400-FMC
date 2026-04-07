@@ -12,6 +12,8 @@ mainTable.loading = false
 mainTable.profile = nil
 mainTable.fcconfigPath = nil
 mainTable.medbPath = nil
+mainTable.data = nil
+mainTable.sections = {}
 mainTable.speeds = {} -- speeds[weight][flap] = { v1=, vr=, v2=, vref= }
 mainTable.weights = {}
 mainTable.meta = {}
@@ -138,10 +140,45 @@ local function sortedWeights(tbl)
     return weights
 end
 
+local function firstTable(...)
+    local candidates = { ... }
+    for i = 1, #candidates do
+        if type(candidates[i]) == "table" then
+            return candidates[i]
+        end
+    end
+    return nil
+end
+
+local function getNested(root, ...)
+    local node = root
+    local keys = { ... }
+    for i = 1, #keys do
+        if type(node) ~= "table" then
+            return nil
+        end
+        node = node[keys[i]]
+    end
+    return node
+end
+
 local function parseMedbTable(data)
     if type(data) ~= "table" then
         return nil, "MEDB root must be a table"
     end
+
+    local performance = firstTable(data.performance, data.performance_data, data.performanceData)
+    local takeoff = firstTable(data.takeoff, getNested(performance, "takeoff")) or {}
+    local climb = firstTable(data.climb, getNested(performance, "climb"))
+    local cruise = firstTable(data.cruise, getNested(performance, "cruise"))
+    local descent = firstTable(data.descent, getNested(performance, "descent"))
+    local fuel = firstTable(data.fuel, getNested(performance, "fuel"))
+    local altitudeCapability = firstTable(
+        data.altitude_capability,
+        data.altitudeCapability,
+        getNested(performance, "altitude_capability"),
+        getNested(performance, "altitudeCapability")
+    )
 
     local out = {}
     local meta = {
@@ -151,12 +188,21 @@ local function parseMedbTable(data)
         mtow_kg = data.mtow_kg,
         mlw_kg = data.mlw_kg,
         units = data.units,
-        vref40_diff = data.vref40_diff,
+        vref40_diff = firstTable(takeoff.vref40_diff, data.vref40_diff, getNested(performance, "vref40_diff")),
     }
     local loaded = 0
 
-    if type(data.speeds) == "table" then
-        for weight, flapTable in pairs(data.speeds) do
+    local takeoffSpeeds = firstTable(
+        takeoff.speeds,
+        takeoff.rows,
+        data.speeds,
+        data.rows,
+        getNested(performance, "takeoff", "speeds"),
+        getNested(performance, "takeoff", "rows")
+    )
+
+    if type(takeoffSpeeds) == "table" then
+        for weight, flapTable in pairs(takeoffSpeeds) do
             if type(flapTable) == "table" then
                 for flap, spd in pairs(flapTable) do
                     if type(spd) == "table" and addSpeedRow(out, weight, flap, spd.v1, spd.vr, spd.v2, spd.vref) then
@@ -181,7 +227,15 @@ local function parseMedbTable(data)
         return nil, "No speed rows found in MEDB"
     end
 
-    return out, meta, nil
+    return out, meta, {
+        takeoff = takeoff,
+        climb = climb,
+        cruise = cruise,
+        descent = descent,
+        fuel = fuel,
+        altitude_capability = altitudeCapability,
+        performance = performance,
+    }, data, nil
 end
 
 local function loadMedb(path)
@@ -195,12 +249,12 @@ local function loadMedb(path)
         return nil, "MEDB execution failed: " .. tostring(result)
     end
 
-    local parsed, meta, parseErr = parseMedbTable(result)
+    local parsed, meta, sections, rawData, parseErr = parseMedbTable(result)
     if not parsed then
         return nil, parseErr
     end
 
-    return parsed, meta, nil
+    return parsed, meta, sections, rawData, nil
 end
 
 local function lerp(a, b, t)
@@ -236,6 +290,8 @@ function mainTable.load()
     mainTable.profile = nil
     mainTable.fcconfigPath = nil
     mainTable.medbPath = nil
+    mainTable.data = nil
+    mainTable.sections = {}
     mainTable.meta = {}
 
     local profile, fcconfigPath = resolveProfileFromLivery()
@@ -251,7 +307,7 @@ function mainTable.load()
         return
     end
 
-    local parsed, meta, err = loadMedb(medbPath)
+    local parsed, meta, sections, rawData, err = loadMedb(medbPath)
     if not parsed then
         mainTable.loading = false
         logMsg("MEDB PARSER: " .. tostring(err))
@@ -261,9 +317,11 @@ function mainTable.load()
     mainTable.profile = profile
     mainTable.fcconfigPath = fcconfigPath
     mainTable.medbPath = medbPath
+    mainTable.data = rawData
     mainTable.speeds = parsed
     mainTable.weights = sortedWeights(parsed)
     mainTable.meta = meta or {}
+    mainTable.sections = sections or {}
     mainTable.ready = true
     mainTable.loading = false
 
@@ -326,6 +384,35 @@ end
 
 function mainTable.getProfiles()
     return { "2B2", "3C1" }
+end
+
+function mainTable.getSection(name)
+    if type(name) ~= "string" then return nil end
+    return mainTable.sections[name]
+end
+
+function mainTable.getTakeoffData()
+    return mainTable.sections.takeoff
+end
+
+function mainTable.getClimbData()
+    return mainTable.sections.climb
+end
+
+function mainTable.getCruiseData()
+    return mainTable.sections.cruise
+end
+
+function mainTable.getDescentData()
+    return mainTable.sections.descent
+end
+
+function mainTable.getFuelData()
+    return mainTable.sections.fuel
+end
+
+function mainTable.getAltitudeCapabilityData()
+    return mainTable.sections.altitude_capability
 end
 
 function mainTable.getVref40(weight, flap, useInterpolation)

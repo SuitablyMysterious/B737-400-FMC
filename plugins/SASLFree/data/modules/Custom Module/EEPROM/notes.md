@@ -20,7 +20,18 @@ Parses `earth_msa.dat` MSA records and sector triplets into indexed lookup table
 
 ## `medb_parser.lua`:
 
-Loads takeoff/landing speed table data from `aircraft_dir/EEPROM/<profile>.medb`, where `<profile>` is selected from livery `eng_type` in `livery.fcconfig` read via `sim/aircraft/view/acf_livery_path`.
+Loads the MEDB performance table from `aircraft_dir/EEPROM/<profile>.medb`, where `<profile>` is selected from livery `eng_type` in `livery.fcconfig` read via `sim/aircraft/view/acf_livery_path`.
+
+Supported MEDB sections:
+
+- `takeoff.speeds` or legacy root `speeds`
+- `climb`
+- `cruise`
+- `descent`
+- `fuel`
+- `altitude_capability` or `altitudeCapability`
+
+The parser preserves the full raw MEDB table at `mainTable.data` and exposes section accessors for the named blocks above.
 
 Supported MEDB profiles:
 

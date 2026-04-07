@@ -1,0 +1,57 @@
+-- CFM56-3B2 | 22,000 lb SLST | B737-400
+-- MTOW ~62,000 kg | V-speeds derived from B737-400 QRH algorithm
+-- Takeoff flaps: 1, 5, 15 | vref is Flaps 30
+return {
+    profile   = "2B2",
+    engine    = "CFM56-3B2",
+    thrust_lb = 22000,
+    mtow_kg   = 62000,
+    mlw_kg    = 54900,
+    units = {
+        weight = "kg",
+        speed  = "kt",
+    },
+    -- takeoff.speeds[weight_kg][flap] = { v1, vr, v2, vref }
+    -- vref is Flaps 30; for Flaps 40 subtract vref40_diff
+    takeoff = {
+        speeds = {
+        [40000] = {
+            [1]  = { v1 = 117, vr = 119, v2 = 134, vref = 119 },
+            [5]  = { v1 = 113, vr = 115, v2 = 130, vref = 119 },
+            [15] = { v1 = 106, vr = 108, v2 = 123, vref = 119 },
+        },
+        [45000] = {
+            [1]  = { v1 = 124, vr = 126, v2 = 139, vref = 126 },
+            [5]  = { v1 = 120, vr = 122, v2 = 135, vref = 126 },
+            [15] = { v1 = 113, vr = 115, v2 = 128, vref = 126 },
+        },
+        [50000] = {
+            [1]  = { v1 = 133, vr = 135, v2 = 146, vref = 134 },
+            [5]  = { v1 = 129, vr = 131, v2 = 142, vref = 134 },
+            [15] = { v1 = 122, vr = 124, v2 = 135, vref = 134 },
+        },
+        [55000] = {
+            [1]  = { v1 = 141, vr = 143, v2 = 153, vref = 142 },
+            [5]  = { v1 = 137, vr = 139, v2 = 149, vref = 142 },
+            [15] = { v1 = 130, vr = 132, v2 = 142, vref = 142 },
+        },
+        [60000] = {
+            [1]  = { v1 = 148, vr = 152, v2 = 159, vref = 147 },
+            [5]  = { v1 = 144, vr = 148, v2 = 155, vref = 147 },
+            [15] = { v1 = 136, vr = 140, v2 = 147, vref = 147 },
+        },
+        -- 2B2 tops out at 62t MTOW; no 65t row
+        },
+        vref40_diff = {
+            below_50t = 3,
+            above_50t = 4,
+        },
+    },
+    climb = {},
+    cruise = {},
+    descent = {},
+    fuel = {},
+    altitude_capability = {},
+    -- Vref Flaps 40 correction vs Flaps 30
+    speeds = nil,
+}
