@@ -1,4 +1,4 @@
--- earth_awy_parser.lua
+-- page.lua
 
 -- Copyright © 2026 SuitablyMysterious
 -- Usage without permission is expressly forbidden
