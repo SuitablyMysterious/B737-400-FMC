@@ -31,4 +31,21 @@ R5 = "#runway_length#{LENGTH}[output](none)|airport_ident AND runway_ident|*find
 L5 = "#magnetic_variation#{MAG VAR}[output](none)|airport_ident AND NOT runway_ident|*find_magnetic_variation*::"
 L6 = #null#{null}[link](null)|none|*none*:<INDEX:
 
+local function find_latitude(airport_ident, runway_ident):
+    if runway_ident and airport_ident == null do
+        return null
+    elseif runway_ident == null do    
+        -- check nav database for airport elevation
+    else do
+        -- check nav database for airport and runway elevation
+    end
+end
+
+-- do the same for lat, mag deviation and long
+
+NOTE:
+
+this system uses what I like to call a "reverse dependancy tree" and therefore requires compilation.
+the "update" command needs to call a update of all things that depend on this
+
 --]]
