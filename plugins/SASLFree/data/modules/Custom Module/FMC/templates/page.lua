@@ -18,13 +18,17 @@ Pages are layed out as followed:
 
 Each field is a string formatted as follows:
 
-"{title}[type](action):placeholder:"
+"#identifier#{title}[type](action)|dependant_on_to_show|*command*:placeholder:"
 
 For example:
-
-L1 = "{RUNWAY IDENT}[input](none):-----:"
-L2 = "{AIRPORT IDENT}[input:ICAO]:----:"
-
-
+TITLE = "REF NAV DATA"
+L1 = "#runway_ident#{RUNWAY IDENT}[input:runway](none)|airport_ident|*update*:-----:"
+L2 = "#airport_ident#{AIRPORT IDENT}[input:ICAO](none)|none|*update*:----:"
+L3 = "#latitude#{LATITUDE}[output](none)|airport_ident AND runway_ident|*find_latitude*::"
+R3 = "#longitude#{LONGITUDE}[output](none)|airport_ident AND runway_ident|*find_longitude*::"
+R4 = "#elevation#{ELEVATION}[output](none)|airport_ident AND runway_ident|*find_elevation*::"
+R5 = "#runway_length#{LENGTH}[output](none)|airport_ident AND runway_ident|*find_runway_length*::"
+L5 = "#magnetic_variation#{MAG VAR}[output](none)|airport_ident AND NOT runway_ident|*find_magnetic_variation*::"
+L6 = #null#{null}[link](null)|none|*none*:<INDEX:
 
 --]]
