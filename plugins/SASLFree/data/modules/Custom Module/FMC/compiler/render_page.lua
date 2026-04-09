@@ -1,4 +1,9 @@
+#!/usr/bin/env lua
 -- render_page.lua
+
+-- Copyright © 2026 SuitablyMysterious
+-- Usage without permission is expressly forbidden
+
 -- CLI scaffold renderer for compiled FMC pages.
 
 local function dirname(path)
@@ -7,11 +12,24 @@ local function dirname(path)
 end
 
 local scriptPath = debug.getinfo(1, "S").source:sub(2)
+if scriptPath:sub(1, 1) ~= "/" then
+    local cwd = io.popen("pwd"):read("*l")
+    scriptPath = cwd .. "/" .. scriptPath
+end
 local scriptDir = dirname(scriptPath)
 local compiledDir = scriptDir .. "/../pages_compiled"
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function pathExists(path)
+    local f = io.open(path, "r")
+    if not f then
+        return false
+    end
+    f:close()
+    return true
 end
 
 local function centerText(text, width)
@@ -37,60 +55,134 @@ local function truncateText(text, width)
     return value:sub(1, width - 1) .. "~"
 end
 
-local function makeMockNavParser()
-    local airport = {
-        ident = "KSEA",
-        lat = 47.4489,
-        lon = -122.3094,
-        elev = 433,
-        slaved_var = 15,
+local function makeSaslShim(xplanePath, aircraftPath, xpVersion)
+    return {
+        getXPlanePath = function()
+            return xplanePath
+        end,
+        getAircraftPath = function()
+            return aircraftPath
+        end,
+        getXPVersion = function()
+            return xpVersion
+        end,
     }
+end
 
-    local runwayLoc = {
-        ident = "16L",
-        airport = "KSEA",
-        runway = "16L",
-        lat = 47.4439,
-        lon = -122.3088,
-        elev = 433,
-        true_brg = 164,
-        mag_front = 149,
-        range = 18,
+local function resolveNavdataPaths()
+    local env = os.getenv
+    local repoRoot = scriptDir
+    for _ = 1, 7 do
+        repoRoot = dirname(repoRoot)
+    end
+    local sampleNavdata = repoRoot .. "/plugins/SASLFree/data/modules/Custom Module/EEPROM/examples/earth_nav.dat"
+    local tempRoot = os.getenv("TMPDIR") or "/tmp"
+    local defaultAircraftPath = tempRoot .. "/fmc_aircraft_render_" .. tostring(os.time()) .. "/"
+    os.execute('mkdir -p "' .. defaultAircraftPath .. 'EEPROM"')
+
+    local explicitNavdata = env("NAVDATA_FILE")
+    if explicitNavdata and pathExists(explicitNavdata) then
+        local navDir = explicitNavdata:match("^(.*)/[^/]+$")
+        if navDir then
+            return navDir .. "/", env("AIRCRAFT_PATH") or defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
+        end
+    end
+
+    local xplanePath = env("XPLANE_PATH") or env("XPLANE_ROOT")
+    if xplanePath and xplanePath ~= "" then
+        return xplanePath, env("AIRCRAFT_PATH") or defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
+    end
+
+    if repoRoot ~= "" then
+        local shimRoot = tempRoot .. "/fmc_navshim"
+            os.execute('mkdir -p "' .. shimRoot .. '/Custom Data"')
+            os.execute('mkdir -p "' .. shimRoot .. '/Resources/default data"')
+            os.execute('ln -sf "' .. sampleNavdata .. '" "' .. shimRoot .. '/Custom Data/earth_nav.dat"')
+        return shimRoot .. "/", env("AIRCRAFT_PATH") or defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
+    end
+
+    return nil, nil, nil
+end
+
+local function loadRealNavParser()
+    local xplanePath, aircraftPath, xpVersion = resolveNavdataPaths()
+    if not xplanePath then
+        error("No X-Plane navdata source found. Set XPLANE_PATH or NAVDATA_FILE.")
+    end
+
+
+    local previousSasl = rawget(_G, "sasl")
+    local previousLogMsg = rawget(_G, "logMsg")
+    local previousEarthNav = rawget(_G, "earth_nav_parser")
+    local parserLogs = {}
+
+    rawset(_G, "sasl", makeSaslShim(xplanePath, aircraftPath, xpVersion))
+    rawset(_G, "logMsg", function(message)
+        parserLogs[#parserLogs + 1] = tostring(message)
+        if type(previousLogMsg) == "function" then
+            pcall(previousLogMsg, message)
+        end
+    end)
+    rawset(_G, "earth_nav_parser", nil)
+
+    local parserPath = scriptDir .. "/../../EEPROM/earth_nav_parser.lua"
+    local ok, parser = pcall(dofile, parserPath)
+
+    if not ok then
+        rawset(_G, "sasl", previousSasl)
+        rawset(_G, "logMsg", previousLogMsg)
+        rawset(_G, "earth_nav_parser", previousEarthNav)
+        error("Failed to load real earth_nav_parser: " .. tostring(parser))
+    end
+
+    return parser, {
+        sasl = previousSasl,
+        logMsg = previousLogMsg,
+        earth_nav_parser = previousEarthNav,
+        logs = parserLogs,
     }
+end
 
-    local mock = {}
-    mock.ready = true
-
-    function mock.load()
-        mock.ready = true
+local function restoreParserGlobals(state)
+    if not state then
+        return
     end
 
-    function mock.update()
-        mock.ready = true
+    rawset(_G, "sasl", state.sasl)
+    rawset(_G, "logMsg", state.logMsg)
+    rawset(_G, "earth_nav_parser", state.earth_nav_parser)
+end
+
+local function ensureParserReady(parser)
+    if not parser then
+        return false
     end
 
-    function mock.getLOC(ident)
-        if ident == runwayLoc.ident then
-            return runwayLoc
+    if parser.ready then
+        return true
+    end
+
+    if type(parser.load) == "function" then
+        local ok, err = pcall(parser.load)
+        if not ok then
+            error("earth_nav_parser.load failed: " .. tostring(err))
         end
-        return nil
     end
 
-    function mock.findNavaid(ident)
-        if ident == airport.ident then
-            return airport
+    local guard = 0
+    while not parser.ready and guard < 10000 do
+        guard = guard + 1
+        if type(parser.update) ~= "function" then
+            break
         end
-        return nil
-    end
 
-    function mock.findAll(ident)
-        if ident == airport.ident then
-            return { airport, runwayLoc }
+        local ok, err = pcall(parser.update)
+        if not ok then
+            error("earth_nav_parser.update failed: " .. tostring(err))
         end
-        return {}
     end
 
-    return mock
+    return parser.ready == true
 end
 
 local function loadPage(pageKey)
@@ -105,7 +197,13 @@ end
 local function parseArgs(argv)
     local pageKey = argv[1] and trim(argv[1]) or "REF_NAV_DATA"
     local airportIdent = argv[2] and trim(argv[2]) or "KSEA"
-    local runwayIdent = argv[3] and trim(argv[3]) or "16L"
+    local runwayIdent = nil
+    if argv[3] then
+        local parsed = trim(argv[3])
+        if parsed ~= "" then
+            runwayIdent = parsed
+        end
+    end
     return pageKey, airportIdent, runwayIdent
 end
 
@@ -183,7 +281,13 @@ end
 local function main(argv)
     local pageKey, airportIdent, runwayIdent = parseArgs(argv)
 
-    earth_nav_parser = makeMockNavParser()
+    local parser, parserGlobals = loadRealNavParser()
+    if not ensureParserReady(parser) then
+        restoreParserGlobals(parserGlobals)
+        error("earth_nav_parser did not become ready: " .. table.concat(parserGlobals.logs or {}, " | "))
+    end
+
+    earth_nav_parser = parser
     custom_module = {
         parsers = {
             earth_nav = earth_nav_parser,
@@ -193,6 +297,8 @@ local function main(argv)
     local pagePath = compiledDir .. "/" .. pageKey .. ".lua"
     local page = loadPage(pageKey)
     renderPage(page, airportIdent, runwayIdent)
+
+    restoreParserGlobals(parserGlobals)
 
     return pagePath
 end
