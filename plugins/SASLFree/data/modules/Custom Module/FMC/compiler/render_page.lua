@@ -225,6 +225,10 @@ local function fieldValue(page, slot, airportIdent, runwayIdent, values)
         return current ~= nil and tostring(current) or (field.placeholder or "")
     end
 
+    if field.fieldType == "link" then
+        return field.placeholder or ""
+    end
+
     if field.command == "none" then
         return ""
     end
@@ -241,23 +245,26 @@ local function fieldValue(page, slot, airportIdent, runwayIdent, values)
     return tostring(result)
 end
 
-local function renderRow(page, leftSlot, rightSlot, airportIdent, runwayIdent, values)
+local function renderRowPair(page, leftSlot, rightSlot, airportIdent, runwayIdent, values)
     local leftField = page.fieldsBySlot and page.fieldsBySlot[leftSlot]
     local rightField = page.fieldsBySlot and page.fieldsBySlot[rightSlot]
 
     local leftVisible = leftField and page.fieldVisible(leftSlot, values)
     local rightVisible = rightField and page.fieldVisible(rightSlot, values)
 
-    local leftLabel = leftVisible and (leftField.label or "") or ""
-    local rightLabel = rightVisible and (rightField.label or "") or ""
-
     local leftValue = leftVisible and fieldValue(page, leftSlot, airportIdent, runwayIdent, values) or ""
     local rightValue = rightVisible and fieldValue(page, rightSlot, airportIdent, runwayIdent, values) or ""
 
-    local leftText = truncateText(leftSlot .. " " .. leftLabel .. " = " .. leftValue, 38)
-    local rightText = truncateText(rightSlot .. " " .. rightLabel .. " = " .. rightValue, 38)
+    local leftIsLink = leftField and leftField.fieldType == "link"
+    local rightIsLink = rightField and rightField.fieldType == "link"
 
-    return "| " .. leftText .. " | " .. rightText .. " |"
+    local leftTitle = (leftVisible and (not leftIsLink)) and (leftField.label or "") or ""
+    local rightTitle = (rightVisible and (not rightIsLink)) and (rightField.label or "") or ""
+
+    local titleLine = "| " .. truncateText(leftTitle, 38) .. " | " .. truncateText(rightTitle, 38) .. " |"
+    local valueLine = "| " .. truncateText(leftValue, 38) .. " | " .. truncateText(rightValue, 38) .. " |"
+
+    return titleLine, valueLine
 end
 
 local function renderPage(page, airportIdent, runwayIdent)
@@ -268,12 +275,24 @@ local function renderPage(page, airportIdent, runwayIdent)
     print(border)
     print("|" .. centerText(page.title or page.pageKey or "PAGE", width - 2) .. "|")
     print(border)
-    print(renderRow(page, "L1", "R1", airportIdent, runwayIdent, values))
-    print(renderRow(page, "L2", "R2", airportIdent, runwayIdent, values))
-    print(renderRow(page, "L3", "R3", airportIdent, runwayIdent, values))
-    print(renderRow(page, "L4", "R4", airportIdent, runwayIdent, values))
-    print(renderRow(page, "L5", "R5", airportIdent, runwayIdent, values))
-    print(renderRow(page, "L6", "R6", airportIdent, runwayIdent, values))
+    local t1, v1 = renderRowPair(page, "L1", "R1", airportIdent, runwayIdent, values)
+    local t2, v2 = renderRowPair(page, "L2", "R2", airportIdent, runwayIdent, values)
+    local t3, v3 = renderRowPair(page, "L3", "R3", airportIdent, runwayIdent, values)
+    local t4, v4 = renderRowPair(page, "L4", "R4", airportIdent, runwayIdent, values)
+    local t5, v5 = renderRowPair(page, "L5", "R5", airportIdent, runwayIdent, values)
+    local t6, v6 = renderRowPair(page, "L6", "R6", airportIdent, runwayIdent, values)
+    print(t1)
+    print(v1)
+    print(t2)
+    print(v2)
+    print(t3)
+    print(v3)
+    print(t4)
+    print(v4)
+    print(t5)
+    print(v5)
+    print(t6)
+    print(v6)
     print(border)
     print("Context: airport_ident=" .. tostring(airportIdent) .. " runway_ident=" .. tostring(runwayIdent))
 end
