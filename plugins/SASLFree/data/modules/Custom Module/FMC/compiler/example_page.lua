@@ -1,4 +1,4 @@
--- page.lua
+-- example_page.lua
 
 -- Copyright © 2026 SuitablyMysterious
 -- Usage without permission is expressly forbidden
@@ -29,12 +29,12 @@ R3 = "#longitude#{LONGITUDE}[output](none)|airport_ident AND runway_ident|*find_
 R4 = "#elevation#{ELEVATION}[output](none)|airport_ident AND runway_ident|*find_elevation*::"
 R5 = "#runway_length#{LENGTH}[output](none)|airport_ident AND runway_ident|*find_runway_length*::"
 L5 = "#magnetic_variation#{MAG VAR}[output](none)|airport_ident AND NOT runway_ident|*find_magnetic_variation*::"
-L6 = #null#{null}[link](null)|none|*none*:<INDEX:
+L6 = #nil#{nil}[link](nil)|none|*none*:<INDEX:
 
 local function find_latitude(airport_ident, runway_ident):
-    if runway_ident and airport_ident == null do
-        return null
-    elseif runway_ident == null do    
+    if runway_ident and airport_ident == nil do
+        return nil
+    elseif runway_ident == nil do    
         -- check nav database for airport elevation
     else do
         -- check nav database for airport and runway elevation
