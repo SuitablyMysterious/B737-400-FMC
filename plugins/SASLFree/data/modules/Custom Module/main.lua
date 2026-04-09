@@ -30,6 +30,7 @@ end
 
 mainTable.parsers = {
 	earth_nav = safeRequire("parser.earth_nav_parser", "earth_nav_parser"),
+	earth_apt = safeRequire("parser.earth_apt_parser", "earth_apt_parser"),
 	earth_awy = safeRequire("parser.earth_awy_parser", "earth_awy_parser"),
 	earth_hold = safeRequire("parser.earth_hold_parser", "earth_hold_parser"),
 	earth_mora = safeRequire("parser.earth_mora_parser", "earth_mora_parser"),

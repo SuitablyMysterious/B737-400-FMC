@@ -104,7 +104,7 @@ local function resolveNavdataPaths()
     return nil, nil, nil
 end
 
-local function loadRealNavParser()
+local function loadRealParsers()
     local xplanePath, aircraftPath, xpVersion = resolveNavdataPaths()
     if not xplanePath then
         error("No X-Plane navdata source found. Set XPLANE_PATH or NAVDATA_FILE.")
@@ -114,6 +114,7 @@ local function loadRealNavParser()
     local previousSasl = rawget(_G, "sasl")
     local previousLogMsg = rawget(_G, "logMsg")
     local previousEarthNav = rawget(_G, "earth_nav_parser")
+    local previousEarthApt = rawget(_G, "earth_apt_parser")
     local parserLogs = {}
 
     rawset(_G, "sasl", makeSaslShim(xplanePath, aircraftPath, xpVersion))
@@ -124,21 +125,38 @@ local function loadRealNavParser()
         end
     end)
     rawset(_G, "earth_nav_parser", nil)
+    rawset(_G, "earth_apt_parser", nil)
 
-    local parserPath = scriptDir .. "/../../EEPROM/earth_nav_parser.lua"
-    local ok, parser = pcall(dofile, parserPath)
+    local navParserPath = scriptDir .. "/../../EEPROM/earth_nav_parser.lua"
+    local okNav, navParser = pcall(dofile, navParserPath)
 
-    if not ok then
+    if not okNav then
         rawset(_G, "sasl", previousSasl)
         rawset(_G, "logMsg", previousLogMsg)
         rawset(_G, "earth_nav_parser", previousEarthNav)
-        error("Failed to load real earth_nav_parser: " .. tostring(parser))
+        rawset(_G, "earth_apt_parser", previousEarthApt)
+        error("Failed to load real earth_nav_parser: " .. tostring(navParser))
     end
 
-    return parser, {
+    local aptParserPath = scriptDir .. "/../../EEPROM/earth_apt_parser.lua"
+    local okApt, aptParser = pcall(dofile, aptParserPath)
+
+    if not okApt then
+        rawset(_G, "sasl", previousSasl)
+        rawset(_G, "logMsg", previousLogMsg)
+        rawset(_G, "earth_nav_parser", previousEarthNav)
+        rawset(_G, "earth_apt_parser", previousEarthApt)
+        error("Failed to load real earth_apt_parser: " .. tostring(aptParser))
+    end
+
+    return {
+        earth_nav = navParser,
+        earth_apt = aptParser,
+    }, {
         sasl = previousSasl,
         logMsg = previousLogMsg,
         earth_nav_parser = previousEarthNav,
+        earth_apt_parser = previousEarthApt,
         logs = parserLogs,
     }
 end
@@ -151,9 +169,10 @@ local function restoreParserGlobals(state)
     rawset(_G, "sasl", state.sasl)
     rawset(_G, "logMsg", state.logMsg)
     rawset(_G, "earth_nav_parser", state.earth_nav_parser)
+    rawset(_G, "earth_apt_parser", state.earth_apt_parser)
 end
 
-local function ensureParserReady(parser)
+local function ensureParserReady(parser, parserName)
     if not parser then
         return false
     end
@@ -165,7 +184,7 @@ local function ensureParserReady(parser)
     if type(parser.load) == "function" then
         local ok, err = pcall(parser.load)
         if not ok then
-            error("earth_nav_parser.load failed: " .. tostring(err))
+            error(tostring(parserName or "parser") .. ".load failed: " .. tostring(err))
         end
     end
 
@@ -178,7 +197,7 @@ local function ensureParserReady(parser)
 
         local ok, err = pcall(parser.update)
         if not ok then
-            error("earth_nav_parser.update failed: " .. tostring(err))
+            error(tostring(parserName or "parser") .. ".update failed: " .. tostring(err))
         end
     end
 
@@ -300,16 +319,20 @@ end
 local function main(argv)
     local pageKey, airportIdent, runwayIdent = parseArgs(argv)
 
-    local parser, parserGlobals = loadRealNavParser()
-    if not ensureParserReady(parser) then
+    local parsers, parserGlobals = loadRealParsers()
+    if not ensureParserReady(parsers.earth_nav, "earth_nav_parser") then
         restoreParserGlobals(parserGlobals)
         error("earth_nav_parser did not become ready: " .. table.concat(parserGlobals.logs or {}, " | "))
     end
 
-    earth_nav_parser = parser
+    ensureParserReady(parsers.earth_apt, "earth_apt_parser")
+
+    earth_nav_parser = parsers.earth_nav
+    earth_apt_parser = parsers.earth_apt
     custom_module = {
         parsers = {
             earth_nav = earth_nav_parser,
+            earth_apt = earth_apt_parser,
         },
     }
 
