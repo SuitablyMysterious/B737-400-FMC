@@ -342,11 +342,7 @@ local function find_runway_length(airport_ident, runway_ident)
         local ok, length_m, source = pcall(apt.findRunwayLength, a, norm_r)
         if ok and length_m and type(length_m) == "number" then
             if logMsg then logMsg(string.format("FMC: runway length %s %s -> %.1fm (source=%s)", a, norm_r, length_m, tostring(source))) end
-            local suffix = ""
-            if source == "apt_exact" then suffix = " (apt)" end
-            if source == "apt_numeric_match" then suffix = " (apt?)" end
-            if source == "nav_loc" then suffix = " (nav)" end
-            return string.format("%dft%s", math.floor(length_m * 3.28084 + 0.5), suffix)
+            return string.format("%dft", math.floor(length_m * 3.28084 + 0.5))
         end
     end
 
@@ -618,6 +614,10 @@ mainTable.fieldsBySlot = {
 mainTable.reverseDeps = {
     ["REF_NAV_DATA.airport_ident"] = {
         {
+            field = "latitude",
+            slot = "L3",
+        },
+        {
             field = "magnetic_variation",
             slot = "L5",
         },
@@ -630,20 +630,20 @@ mainTable.reverseDeps = {
             slot = "R4",
         },
         {
-            field = "runway_ident",
-            slot = "L1",
-        },
-        {
             field = "longitude",
             slot = "R3",
         },
         {
-            field = "latitude",
-            slot = "L3",
+            field = "runway_ident",
+            slot = "L1",
         },
     },
     ["REF_NAV_DATA.runway_ident"] = {
         {
+            field = "latitude",
+            slot = "L3",
+        },
+        {
             field = "magnetic_variation",
             slot = "L5",
         },
@@ -659,12 +659,12 @@ mainTable.reverseDeps = {
             field = "longitude",
             slot = "R3",
         },
+    },
+    airport_ident = {
         {
             field = "latitude",
             slot = "L3",
         },
-    },
-    airport_ident = {
         {
             field = "magnetic_variation",
             slot = "L5",
@@ -676,21 +676,21 @@ mainTable.reverseDeps = {
         {
             field = "elevation",
             slot = "R4",
+        },
+        {
+            field = "longitude",
+            slot = "R3",
         },
         {
             field = "runway_ident",
             slot = "L1",
         },
-        {
-            field = "longitude",
-            slot = "R3",
-        },
+    },
+    runway_ident = {
         {
             field = "latitude",
             slot = "L3",
         },
-    },
-    runway_ident = {
         {
             field = "magnetic_variation",
             slot = "L5",
@@ -706,20 +706,16 @@ mainTable.reverseDeps = {
         {
             field = "longitude",
             slot = "R3",
-        },
-        {
-            field = "latitude",
-            slot = "L3",
         },
     },
 }
 
 mainTable.commands = {
+    ["find_latitude"] = find_latitude,
     ["find_magnetic_variation"] = find_magnetic_variation,
     ["find_runway_length"] = find_runway_length,
     ["find_elevation"] = find_elevation,
     ["find_longitude"] = find_longitude,
-    ["find_latitude"] = find_latitude,
 }
 
 local function evalDependencyRpn(rpn, values)

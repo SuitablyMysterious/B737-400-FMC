@@ -7,6 +7,11 @@ local registry = {}
 registry.reverse = {
     ["REF_NAV_DATA.airport_ident"] = {
         {
+            field = "latitude",
+            page = "REF_NAV_DATA",
+            slot = "L3",
+        },
+        {
             field = "magnetic_variation",
             page = "REF_NAV_DATA",
             slot = "L5",
@@ -20,24 +25,24 @@ registry.reverse = {
             field = "elevation",
             page = "REF_NAV_DATA",
             slot = "R4",
+        },
+        {
+            field = "longitude",
+            page = "REF_NAV_DATA",
+            slot = "R3",
         },
         {
             field = "runway_ident",
             page = "REF_NAV_DATA",
             slot = "L1",
         },
-        {
-            field = "longitude",
-            page = "REF_NAV_DATA",
-            slot = "R3",
-        },
+    },
+    ["REF_NAV_DATA.runway_ident"] = {
         {
             field = "latitude",
             page = "REF_NAV_DATA",
             slot = "L3",
         },
-    },
-    ["REF_NAV_DATA.runway_ident"] = {
         {
             field = "magnetic_variation",
             page = "REF_NAV_DATA",
@@ -57,11 +62,6 @@ registry.reverse = {
             field = "longitude",
             page = "REF_NAV_DATA",
             slot = "R3",
-        },
-        {
-            field = "latitude",
-            page = "REF_NAV_DATA",
-            slot = "L3",
         },
     },
 }

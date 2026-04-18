@@ -306,7 +306,7 @@ local function linkGlideslopes()
     end
 end
 
-local function parseLine(line)
+local function parseLine(line, options)
     -- Tokenise on whitespace
     local t = {}
     for token in line:gmatch("%S+") do
@@ -319,7 +319,11 @@ local function parseLine(line)
     if not rowcode then return end
 
         if rowcode == ROW_EOF then return "EOF"
-        elseif rowcode == ROW_NDB then parseNDB(t)
+        elseif rowcode == ROW_NDB then
+            if options and options.skipNDB then
+                return "SKIP"
+            end
+            parseNDB(t)
         elseif rowcode == ROW_VOR then parseVOR(t)
         elseif rowcode == ROW_ILS_LOC then parseLOC(t, ROW_ILS_LOC)
         elseif rowcode == ROW_LOC_ONLY then parseLOC(t, ROW_LOC_ONLY)
@@ -496,7 +500,7 @@ end
 
 local BATCH_SIZE = 500
 
-local function loaderCoroutine(path)
+local function loaderCoroutine(path, options)
     local f = io.open(path, "r")
     if not f then
         logMsg("NAVDATA PARSER: Cannot open " .. tostring(path))
@@ -516,8 +520,9 @@ local function loaderCoroutine(path)
         -- Skip blank lines
         if line:match("^%s*$") then goto continue end
 
-        local result = parseLine(line)
+        local result = parseLine(line, options)
         if result == "EOF" then break end
+        if result == "SKIP" then goto continue end
 
         mainTable.totalNavaids = mainTable.totalNavaids + 1
 
@@ -572,16 +577,17 @@ function mainTable.load()
     mainTable.linesRead = 0
     mainTable.totalNavaids = 0
     logMsg("NAVDATA PARSER: Loading " .. tostring(path))
-    -- attempt to load cached NDB if metadata matches current navdata
+    -- Attempt to preload cached NDB entries when metadata matches navdata.
+    -- We still parse the full navdata file for VOR/LOC/GS/etc so pages that
+    -- depend on localizers keep working; cached NDB simply avoids reparsing NDB rows.
+    local skipNDB = false
     local ok, loaded = pcall(loadNDBCache, path)
     if ok and loaded and mainTable.countTable(mainTable.ndb) > 0 then
-        mainTable.ready = true
-        mainTable.loading = false
-        logMsg("NAVDATA PARSER: Using cached NDB data from " .. getNDBCacheFile())
-        return
+        skipNDB = true
+        logMsg("NAVDATA PARSER: Preloaded cached NDB data from " .. getNDBCacheFile())
     end
     -- fallback: parse the navdata file
-    _coro = coroutine.create(function() loaderCoroutine(path) end)
+    _coro = coroutine.create(function() loaderCoroutine(path, { skipNDB = skipNDB }) end)
 end
 
 -- Call every frame from your update() loop

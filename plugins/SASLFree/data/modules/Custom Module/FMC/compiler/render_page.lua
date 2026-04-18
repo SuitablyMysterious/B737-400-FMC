@@ -40,6 +40,17 @@ local function pathExists(path)
     return true
 end
 
+local function ensureTrailingSlash(path)
+    local p = trim(path)
+    if p == "" then
+        return nil
+    end
+    if p:sub(-1) ~= "/" then
+        p = p .. "/"
+    end
+    return p
+end
+
 local function centerText(text, width)
     local value = tostring(text or "")
     if #value >= width then
@@ -86,13 +97,7 @@ local function resolveNavdataPaths()
     local sampleNavdata = repoRoot .. "/plugins/SASLFree/data/modules/Custom Module/EEPROM/examples/earth_nav.dat"
     local sampleAptdata = repoRoot .. "/plugins/SASLFree/data/modules/Custom Module/EEPROM/examples/apt.dat"
     local tempRoot = os.getenv("TMPDIR") or "/tmp"
-    -- Use a higher-resolution per-process suffix to avoid collisions when the
-    -- CLI renderer is invoked multiple times within the same second. The
-    -- original code used only os.time() (second resolution) which caused
-    -- different runs to reuse the same temp directory and pick up a cached
-    -- NDB file, producing inconsistent results.
-    local hr = math.floor((os.clock() * 1e6) % 1000000)
-    local defaultAircraftPath = tempRoot .. "/fmc_aircraft_render_" .. tostring(os.time()) .. "_" .. tostring(hr) .. "/"
+    local defaultAircraftPath = ensureTrailingSlash(env("AIRCRAFT_PATH")) or (tempRoot .. "/fmc_aircraft_render/")
     os.execute('mkdir -p "' .. defaultAircraftPath .. 'EEPROM"')
 
     local function linkIfExists(src, dst)
@@ -101,6 +106,14 @@ local function resolveNavdataPaths()
             return true
         end
         return false
+    end
+
+    -- Seed the active aircraft EEPROM with the project's raw NDB cache when
+    -- available. This lets the nav parser hit cache fast on first render run.
+    local bundledNdbCache = repoRoot .. "/plugins/SASLFree/data/modules/Custom Module/FMC/EEPROM/earth_nav.ndb"
+    local activeNdbCache = defaultAircraftPath .. "EEPROM/earth_nav.ndb"
+    if not pathExists(activeNdbCache) then
+        linkIfExists(bundledNdbCache, activeNdbCache)
     end
 
     local explicitNavdata = env("NAVDATA_FILE")
@@ -114,12 +127,12 @@ local function resolveNavdataPaths()
         if not linkIfExists(explicitAptdata, shimRoot .. '/Resources/default scenery/default apt dat/Earth nav data/apt.dat') then
             linkIfExists(sampleAptdata, shimRoot .. '/Resources/default scenery/default apt dat/Earth nav data/apt.dat')
         end
-        return shimRoot .. "/", env("AIRCRAFT_PATH") or defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
+        return shimRoot .. "/", defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
     end
 
     local xplanePath = env("XPLANE_PATH") or env("XPLANE_ROOT")
     if xplanePath and xplanePath ~= "" then
-        return xplanePath, env("AIRCRAFT_PATH") or defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
+        return xplanePath, defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
     end
 
     if repoRoot ~= "" then
@@ -129,7 +142,7 @@ local function resolveNavdataPaths()
             os.execute('mkdir -p "' .. shimRoot .. '/Resources/default scenery/default apt dat/Earth nav data"')
             linkIfExists(sampleNavdata, shimRoot .. '/Custom Data/earth_nav.dat')
             linkIfExists(sampleAptdata, shimRoot .. '/Resources/default scenery/default apt dat/Earth nav data/apt.dat')
-        return shimRoot .. "/", env("AIRCRAFT_PATH") or defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
+        return shimRoot .. "/", defaultAircraftPath, tonumber(env("XP_VERSION")) or 12000
     end
 
     return nil, nil, nil

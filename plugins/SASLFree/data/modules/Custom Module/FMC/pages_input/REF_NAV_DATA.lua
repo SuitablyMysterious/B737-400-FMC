@@ -285,11 +285,7 @@ local function find_runway_length(airport_ident, runway_ident)
         local ok, length_m, source = pcall(apt.findRunwayLength, a, norm_r)
         if ok and length_m and type(length_m) == "number" then
             if logMsg then logMsg(string.format("FMC: runway length %s %s -> %.1fm (source=%s)", a, norm_r, length_m, tostring(source))) end
-            local suffix = ""
-            if source == "apt_exact" then suffix = " (apt)" end
-            if source == "apt_numeric_match" then suffix = " (apt?)" end
-            if source == "nav_loc" then suffix = " (nav)" end
-            return string.format("%dft%s", math.floor(length_m * 3.28084 + 0.5), suffix)
+            return string.format("%dft", math.floor(length_m * 3.28084 + 0.5))
         end
     end
 
