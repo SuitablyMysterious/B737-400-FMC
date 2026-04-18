@@ -249,21 +249,67 @@ local function find_elevation(airport_ident, runway_ident)
 end
 
 local function find_runway_length(airport_ident, runway_ident)
-    if airport_ident == nil or runway_ident == nil then
-        return nil
+    local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+    local a = trim(airport_ident):upper()
+    local r = trim(runway_ident)
+    if a == "" then return "<NO AIRPORT>" end
+    if r == "" then return "<NO RUNWAY>" end
+
+    if not a:match("^[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]$") then
+        return "<BAD AIRPORT>"
     end
+
+    local function normalizeRunwayInput(raw)
+        local s = (tostring(raw or ""):gsub("^%s+", ""):gsub("%s+$", "")):upper()
+        if s == "" then return nil end
+        if s:sub(1,2) == "RW" then s = s:sub(3) end
+        local num, suffix = s:match("^(%d%d)([LRC]?)$")
+        if not num then
+            local single, singleSuffix = s:match("^(%d)([LRC]?)$")
+            if single then num = "0" .. single; suffix = singleSuffix else return nil end
+        end
+        local n = tonumber(num)
+        if not n or n < 1 or n > 36 then return nil end
+        return string.format("%02d%s", n, suffix or "")
+    end
+
+    local norm_r = normalizeRunwayInput(r)
+    if not norm_r then return "<BAD RUNWAY>" end
 
     local apt = a_get_apt_parser()
     if not a_ensure_parser_ready(apt) then
-        return nil
+        return "<PARSER NOT READY>"
     end
 
-    local runway = a_find_runway_end(apt, airport_ident, runway_ident)
-    if runway and runway.length_m then
-        return runway.length_m * 3.28084
+    if type(apt.findRunwayLength) == "function" then
+        local ok, length_m, source = pcall(apt.findRunwayLength, a, norm_r)
+        if ok and length_m and type(length_m) == "number" then
+            if logMsg then logMsg(string.format("FMC: runway length %s %s -> %.1fm (source=%s)", a, norm_r, length_m, tostring(source))) end
+            local suffix = ""
+            if source == "apt_exact" then suffix = " (apt)" end
+            if source == "apt_numeric_match" then suffix = " (apt?)" end
+            if source == "nav_loc" then suffix = " (nav)" end
+            return string.format("%dft%s", math.floor(length_m * 3.28084 + 0.5), suffix)
+        end
     end
 
-    return nil
+    local nav = a_get_nav_parser()
+    a_ensure_parser_ready(nav)
+    local foundAirport = false
+    if apt and type(apt.byAirport) == "table" and apt.byAirport[a] and #apt.byAirport[a] > 0 then foundAirport = true end
+    if not foundAirport and nav and type(nav.loc) == "table" then
+        for _, ident in ipairs((function() local ks = {}; for k in pairs(nav.loc) do ks[#ks+1]=k end; table.sort(ks); return ks end)()) do
+            for _, loc in ipairs(nav.loc[ident]) do
+                if loc and loc.airport == a then foundAirport = true; break end
+            end
+            if foundAirport then break end
+        end
+    end
+    if not foundAirport then
+        return "<APT NOT FOUND>"
+    end
+
+    return "<RWY NOT FOUND>"
 end
 
 local function find_magnetic_variation(airport_ident)

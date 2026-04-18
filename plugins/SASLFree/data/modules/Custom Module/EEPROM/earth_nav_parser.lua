@@ -24,6 +24,10 @@ local ROW_EOF = 99
 
 local xp_path = sasl.getXPlanePath()
 local aircraft_path = sasl.getAircraftPath()
+-- Ensure xp_path ends with a trailing slash so concatenations are safe
+if xp_path and xp_path:sub(-1) ~= "/" then
+    xp_path = xp_path .. "/"
+end
 local xp_version = sasl.getXPVersion()
 
 local xp11_navdata_paths = {
@@ -662,6 +666,90 @@ function mainTable.findAll(ident)
     collect(mainTable.loc)
     collect(mainTable.dme)
     return results
+end
+
+-- findRunwayLength(airportIdent, runwayIdent)
+-- Returns a length in meters approximated from localizer/loc/ils positions.
+function mainTable.findRunwayLength(airportIdent, runwayIdent)
+    if not airportIdent or not runwayIdent then return nil end
+    local airport = (tostring(airportIdent or ""):gsub("^%s+", ""):gsub("%s+$", "")):upper()
+    local function normalizeRunway(raw)
+        local s = (tostring(raw or ""):gsub("^%s+", ""):gsub("%s+$", "")):upper()
+        if s == "" then return nil end
+        if s:sub(1,2) == "RW" then s = s:sub(3) end
+        local num, suffix = s:match("^(%d%d)([LRC]?)$")
+        if not num then
+            local single, singleSuffix = s:match("^(%d)([LRC]?)$")
+            if single then num = "0" .. single; suffix = singleSuffix else return nil end
+        end
+        local n = tonumber(num)
+        if not n or n < 1 or n > 36 then return nil end
+        return string.format("%02d%s", n, suffix or "")
+    end
+
+    local req = normalizeRunway(runwayIdent)
+    if not req then return nil end
+
+    -- collect all LOC/ILS entries for this airport/runway deterministically
+    local points = {}
+    local idents = {}
+    for ident in pairs(mainTable.loc) do idents[#idents+1] = ident end
+    table.sort(idents)
+    for _, ident in ipairs(idents) do
+        for _, loc in ipairs(mainTable.loc[ident]) do
+            if loc and loc.airport == airport then
+                local lr = normalizeRunway(loc.runway)
+                if lr == req and loc.lat and loc.lon then
+                    points[#points+1] = { lat = loc.lat, lon = loc.lon }
+                end
+            end
+        end
+    end
+
+    if #points < 2 then
+        -- not enough anchor points
+        return nil
+    end
+
+    local function haversineMeters(lat1, lon1, lat2, lon2)
+        local rad = math.pi / 180
+        local dlat = (lat2 - lat1) * rad
+        local dlon = (lon2 - lon1) * rad
+        local a = math.sin(dlat / 2)^2 + math.cos(lat1 * rad) * math.cos(lat2 * rad) * math.sin(dlon / 2)^2
+        -- math.atan2 may not be available in all Lua environments; provide a fallback
+        local function atan2(y, x)
+            if math.atan2 then return math.atan2(y, x) end
+            if x > 0 then
+                return math.atan(y / x)
+            elseif x < 0 and y >= 0 then
+                return math.atan(y / x) + math.pi
+            elseif x < 0 and y < 0 then
+                return math.atan(y / x) - math.pi
+            elseif x == 0 and y > 0 then
+                return math.pi / 2
+            elseif x == 0 and y < 0 then
+                return -math.pi / 2
+            else
+                return 0
+            end
+        end
+        local c = 2 * atan2(math.sqrt(a), math.sqrt(1 - a))
+        return 6371000 * c
+    end
+
+    local maxd = 0
+    for i = 1, #points - 1 do
+        for j = i + 1, #points do
+            local d = haversineMeters(points[i].lat, points[i].lon, points[j].lat, points[j].lon)
+            if d > maxd then maxd = d end
+        end
+    end
+
+    if maxd > 0 then
+        return maxd
+    end
+
+    return nil
 end
 
 return mainTable

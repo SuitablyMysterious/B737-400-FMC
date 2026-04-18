@@ -7,6 +7,10 @@
 
 local xp_path = sasl.getXPlanePath()
 local aircraft_path = sasl.getAircraftPath()
+-- Ensure xp_path ends with a trailing slash so concatenations are safe
+if xp_path and xp_path:sub(-1) ~= "/" then
+    xp_path = xp_path .. "/"
+end
 
 local navdata_paths = {
     {"Custom Scenery"},
@@ -75,6 +79,15 @@ local function insertRow(tbl, key, entry)
 end
 
 local function findAptDatPath()
+    -- Prefer the global "Global Scenery/Global Airports" apt.dat if present
+    local globalApt = xp_path .. "Global Scenery/Global Airports/Earth nav data/apt.dat"
+    local f = io.open(globalApt, "r")
+    if f then
+        f:close()
+        return globalApt
+    end
+
+    -- Otherwise, search Custom Scenery for any apt.dat (custom sceneries often ship their own)
     local customSceneryPath = xp_path .. "Custom Scenery"
     local customScenery = io.popen('find "' .. customSceneryPath .. '" -type f -path "*/Earth nav data/apt.dat" 2>/dev/null')
     if customScenery then
@@ -85,13 +98,6 @@ local function findAptDatPath()
             end
         end
         customScenery:close()
-    end
-
-    local globalApt = xp_path .. "Global Airports/Earth nav data/apt.dat"
-    local f = io.open(globalApt, "r")
-    if f then
-        f:close()
-        return globalApt
     end
 
     local defaultApt = xp_path .. "Resources/default scenery/default apt dat/Earth nav data/apt.dat"
@@ -132,7 +138,25 @@ local function haversineMeters(lat1, lon1, lat2, lon2)
     local dlat = (lat2 - lat1) * rad
     local dlon = (lon2 - lon1) * rad
     local a = math.sin(dlat / 2)^2 + math.cos(lat1 * rad) * math.cos(lat2 * rad) * math.sin(dlon / 2)^2
-    local c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    -- math.atan2 may not be available in all Lua environments; provide a fallback
+    local function atan2(y, x)
+        if math.atan2 then return math.atan2(y, x) end
+        -- Fallback implementation using math.atan
+        if x > 0 then
+            return math.atan(y / x)
+        elseif x < 0 and y >= 0 then
+            return math.atan(y / x) + math.pi
+        elseif x < 0 and y < 0 then
+            return math.atan(y / x) - math.pi
+        elseif x == 0 and y > 0 then
+            return math.pi / 2
+        elseif x == 0 and y < 0 then
+            return -math.pi / 2
+        else
+            return 0
+        end
+    end
+    local c = 2 * atan2(math.sqrt(a), math.sqrt(1 - a))
     return 6371000 * c
 end
 
@@ -483,6 +507,59 @@ function mainTable.findRunwayEnd(airportIdent, runwayIdent)
     end
 
     return nil
+end
+
+-- findRunwayLength(airportIdent, runwayIdent)
+-- Returns: length_m (number) or nil, and a source string describing where the
+-- length came from: "apt_exact", "apt_numeric_match", "nav_loc", etc.
+function mainTable.findRunwayLength(airportIdent, runwayIdent)
+    local airport = (tostring(airportIdent or ""):gsub("^%s+", ""):gsub("%s+$", "")):upper()
+    if airport == "" or not runwayIdent then
+        return nil, nil
+    end
+
+    -- Primary: exact apt lookup
+    local exact = mainTable.findRunwayEnd(airport, runwayIdent)
+    if exact and exact.length_m and exact.length_m > 0 then
+        if logMsg then logMsg(string.format("APT PARSER: runway length for %s %s -> %.1fm (source=apt_exact)", airport, tostring(runwayIdent), exact.length_m)) end
+        return exact.length_m, "apt_exact"
+    end
+
+    -- Fallback 1: permissive numeric-match against apt data (ignore L/R/C)
+    local numeric = tonumber(tostring(runwayIdent):sub(1,2))
+    if numeric then
+        local best = 0
+        local keyPrefix = airport .. "|"
+        for k, list in pairs(mainTable.byAirportRunway) do
+            if k:sub(1, #keyPrefix) == keyPrefix then
+                for _, e in ipairs(list) do
+                    if e and e.runway and tonumber(e.runway:sub(1,2)) == numeric and e.length_m and e.length_m > best then
+                        best = e.length_m
+                    end
+                end
+            end
+        end
+        if best > 0 then
+            if logMsg then logMsg(string.format("APT PARSER: runway length for %s %s -> %.1fm (source=apt_numeric_match)", airport, tostring(runwayIdent), best)) end
+            return best, "apt_numeric_match"
+        end
+    end
+
+    -- Fallback 2: ask earth_nav_parser for an approximation
+    local nav = rawget(_G, "earth_nav_parser")
+    if not nav and rawget(_G, "custom_module") and custom_module.parsers then
+        nav = custom_module.parsers.earth_nav
+    end
+
+    if nav and type(nav.findRunwayLength) == "function" then
+        local ok, val = pcall(nav.findRunwayLength, airport, runwayIdent)
+        if ok and val and type(val) == "number" and val > 0 then
+            if logMsg then logMsg(string.format("APT PARSER: runway length for %s %s -> %.1fm (source=nav_loc)", airport, tostring(runwayIdent), val)) end
+            return val, "nav_loc"
+        end
+    end
+
+    return nil, nil
 end
 
 function mainTable.normalizeRunwayIdent(raw)

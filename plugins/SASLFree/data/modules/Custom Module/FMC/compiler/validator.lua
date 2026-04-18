@@ -46,11 +46,23 @@ local function normalizeRunway(raw)
 		core = core:sub(3)
 	end
 
-	if not core:match("^%d%d[CLR]?$") then
+	local num, suffix = core:match("^(%d%d)([LRC]?)$")
+	if not num then
+		local single, singleSuffix = core:match("^(%d)([LRC]?)$")
+		if single then
+			num = "0" .. single
+			suffix = singleSuffix
+		else
+			return nil, false
+		end
+	end
+
+	local n = tonumber(num)
+	if not n or n < 1 or n > 36 then
 		return nil, false
 	end
 
-	return "RW" .. core, true
+	return string.format("RW%02d%s", n, suffix or ""), true
 end
 
 local function normalizeAirportIcao(raw)
