@@ -62,8 +62,19 @@ local function find_localizer_for_airport(nav, airport_ident, runway_ident)
         return nil
     end
 
+    -- Iterate in a deterministic order: collect idents and sort them. Using
+    -- pairs() directly can yield non-deterministic traversal order which makes
+    -- the selected fallback vary between runs when multiple localizers exist
+    -- for the same airport. Sorting ensures stable behaviour.
+    local idents = {}
+    for ident in pairs(nav.loc) do
+        idents[#idents + 1] = ident
+    end
+    table.sort(idents)
+
     local fallback = nil
-    for _, entries in pairs(nav.loc) do
+    for _, ident in ipairs(idents) do
+        local entries = nav.loc[ident]
         for _, loc in ipairs(entries) do
             if loc.airport == airport_ident then
                 if runway_ident and loc.runway == runway_ident then

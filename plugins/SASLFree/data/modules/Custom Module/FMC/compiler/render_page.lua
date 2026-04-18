@@ -77,7 +77,13 @@ local function resolveNavdataPaths()
     end
     local sampleNavdata = repoRoot .. "/plugins/SASLFree/data/modules/Custom Module/EEPROM/examples/earth_nav.dat"
     local tempRoot = os.getenv("TMPDIR") or "/tmp"
-    local defaultAircraftPath = tempRoot .. "/fmc_aircraft_render_" .. tostring(os.time()) .. "/"
+    -- Use a higher-resolution per-process suffix to avoid collisions when the
+    -- CLI renderer is invoked multiple times within the same second. The
+    -- original code used only os.time() (second resolution) which caused
+    -- different runs to reuse the same temp directory and pick up a cached
+    -- NDB file, producing inconsistent results.
+    local hr = math.floor((os.clock() * 1e6) % 1000000)
+    local defaultAircraftPath = tempRoot .. "/fmc_aircraft_render_" .. tostring(os.time()) .. "_" .. tostring(hr) .. "/"
     os.execute('mkdir -p "' .. defaultAircraftPath .. 'EEPROM"')
 
     local explicitNavdata = env("NAVDATA_FILE")

@@ -135,8 +135,17 @@ local function a_find_localizer_for_airport(nav, airport_ident, runway_ident)
 
     local requestedRunway = normalizeRunway(runway_ident)
 
+    -- Iterate deterministically over sorted idents to ensure stable selection of
+    -- a fallback localizer when multiple candidates exist for the same airport.
+    local idents = {}
+    for ident in pairs(nav.loc) do
+        idents[#idents + 1] = ident
+    end
+    table.sort(idents)
+
     local fallback = nil
-    for _, entries in pairs(nav.loc) do
+    for _, ident in ipairs(idents) do
+        local entries = nav.loc[ident]
         for _, loc in ipairs(entries) do
             if loc.airport == airport_ident then
                 if requestedRunway and normalizeRunway(loc.runway) == requestedRunway then

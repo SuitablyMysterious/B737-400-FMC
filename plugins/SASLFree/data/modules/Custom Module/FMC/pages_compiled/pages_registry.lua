@@ -12,9 +12,9 @@ registry.reverse = {
             slot = "L1",
         },
         {
-            field = "longitude",
+            field = "runway_length",
             page = "REF_NAV_DATA",
-            slot = "R3",
+            slot = "R5",
         },
         {
             field = "elevation",
@@ -22,26 +22,26 @@ registry.reverse = {
             slot = "R4",
         },
         {
-            field = "runway_length",
+            field = "latitude",
             page = "REF_NAV_DATA",
-            slot = "R5",
+            slot = "L3",
+        },
+        {
+            field = "longitude",
+            page = "REF_NAV_DATA",
+            slot = "R3",
         },
         {
             field = "magnetic_variation",
             page = "REF_NAV_DATA",
             slot = "L5",
-        },
-        {
-            field = "latitude",
-            page = "REF_NAV_DATA",
-            slot = "L3",
         },
     },
     ["REF_NAV_DATA.runway_ident"] = {
         {
-            field = "longitude",
+            field = "runway_length",
             page = "REF_NAV_DATA",
-            slot = "R3",
+            slot = "R5",
         },
         {
             field = "elevation",
@@ -49,19 +49,19 @@ registry.reverse = {
             slot = "R4",
         },
         {
-            field = "runway_length",
+            field = "latitude",
             page = "REF_NAV_DATA",
-            slot = "R5",
+            slot = "L3",
+        },
+        {
+            field = "longitude",
+            page = "REF_NAV_DATA",
+            slot = "R3",
         },
         {
             field = "magnetic_variation",
             page = "REF_NAV_DATA",
             slot = "L5",
-        },
-        {
-            field = "latitude",
-            page = "REF_NAV_DATA",
-            slot = "L3",
         },
     },
 }

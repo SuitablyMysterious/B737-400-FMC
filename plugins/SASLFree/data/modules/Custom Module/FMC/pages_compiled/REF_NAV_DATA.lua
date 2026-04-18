@@ -96,8 +96,17 @@ local function a_find_localizer_for_airport(nav, airport_ident, runway_ident)
 
     local requestedRunway = normalizeRunway(runway_ident)
 
+    -- Iterate deterministically over sorted idents to ensure stable selection of
+    -- a fallback localizer when multiple candidates exist for the same airport.
+    local idents = {}
+    for ident in pairs(nav.loc) do
+        idents[#idents + 1] = ident
+    end
+    table.sort(idents)
+
     local fallback = nil
-    for _, entries in pairs(nav.loc) do
+    for _, ident in ipairs(idents) do
+        local entries = nav.loc[ident]
         for _, loc in ipairs(entries) do
             if loc.airport == airport_ident then
                 if requestedRunway and normalizeRunway(loc.runway) == requestedRunway then
@@ -567,46 +576,46 @@ mainTable.reverseDeps = {
             slot = "L1",
         },
         {
-            field = "longitude",
-            slot = "R3",
+            field = "runway_length",
+            slot = "R5",
         },
         {
             field = "elevation",
             slot = "R4",
         },
         {
-            field = "runway_length",
-            slot = "R5",
+            field = "latitude",
+            slot = "L3",
+        },
+        {
+            field = "longitude",
+            slot = "R3",
         },
         {
             field = "magnetic_variation",
             slot = "L5",
-        },
-        {
-            field = "latitude",
-            slot = "L3",
         },
     },
     ["REF_NAV_DATA.runway_ident"] = {
         {
-            field = "longitude",
-            slot = "R3",
+            field = "runway_length",
+            slot = "R5",
         },
         {
             field = "elevation",
             slot = "R4",
         },
         {
-            field = "runway_length",
-            slot = "R5",
+            field = "latitude",
+            slot = "L3",
+        },
+        {
+            field = "longitude",
+            slot = "R3",
         },
         {
             field = "magnetic_variation",
             slot = "L5",
-        },
-        {
-            field = "latitude",
-            slot = "L3",
         },
     },
     airport_ident = {
@@ -615,56 +624,56 @@ mainTable.reverseDeps = {
             slot = "L1",
         },
         {
-            field = "longitude",
-            slot = "R3",
+            field = "runway_length",
+            slot = "R5",
         },
         {
             field = "elevation",
             slot = "R4",
         },
         {
-            field = "runway_length",
-            slot = "R5",
+            field = "latitude",
+            slot = "L3",
+        },
+        {
+            field = "longitude",
+            slot = "R3",
         },
         {
             field = "magnetic_variation",
             slot = "L5",
-        },
-        {
-            field = "latitude",
-            slot = "L3",
         },
     },
     runway_ident = {
         {
-            field = "longitude",
-            slot = "R3",
+            field = "runway_length",
+            slot = "R5",
         },
         {
             field = "elevation",
             slot = "R4",
         },
         {
-            field = "runway_length",
-            slot = "R5",
+            field = "latitude",
+            slot = "L3",
+        },
+        {
+            field = "longitude",
+            slot = "R3",
         },
         {
             field = "magnetic_variation",
             slot = "L5",
-        },
-        {
-            field = "latitude",
-            slot = "L3",
         },
     },
 }
 
 mainTable.commands = {
-    ["find_longitude"] = find_longitude,
-    ["find_elevation"] = find_elevation,
     ["find_runway_length"] = find_runway_length,
-    ["find_magnetic_variation"] = find_magnetic_variation,
+    ["find_elevation"] = find_elevation,
     ["find_latitude"] = find_latitude,
+    ["find_longitude"] = find_longitude,
+    ["find_magnetic_variation"] = find_magnetic_variation,
 }
 
 local function evalDependencyRpn(rpn, values)
