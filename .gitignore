@@ -3,3 +3,4 @@ Other\ Data/
 plugins/SASLFree/data/modules/Custom\ Module/FMC/compiler/debug_*.lua
 plugins/SASLFree/data/modules/Custom\ Module/FMC/compiler/test_page_run.lua
 *.ndb
+*.dat
